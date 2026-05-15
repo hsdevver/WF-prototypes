@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WF Prototypes</title>
+    <link rel="stylesheet" href="css/launcher.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="panel" aria-label="Prototype navigation">
+        <header class="panel__header">
+          <p class="panel__eyebrow">Attensi IMPACT</p>
+          <h1 class="panel__title">WF Prototypes</h1>
+        </header>
+
+        <nav class="panel__nav">
+          <ul class="prototype-list">
+            <li>
+              <a class="prototype-btn prototype-btn--active" href="flow-map/">
+                <span class="prototype-btn__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 6h6v4H4zM14 6h6v4h-6zM9 14h6v4H9z" />
+                    <path d="M10 10v4M14 10v4" />
+                  </svg>
+                </span>
+                <span class="prototype-btn__text">
+                  <span class="prototype-btn__label">flow-map</span>
+                  <span class="prototype-btn__desc">Chapter module path</span>
+                </span>
+              </a>
+            </li>
+            <li>
+              <button class="prototype-btn prototype-btn--soon" type="button" disabled>
+                <span class="prototype-btn__icon" aria-hidden="true">+</span>
+                <span class="prototype-btn__text">
+                  <span class="prototype-btn__label">Coming soon</span>
+                  <span class="prototype-btn__desc">More prototypes</span>
+                </span>
+              </button>
+            </li>
+          </ul>
+        </nav>
+
+        <footer class="panel__footer">
+          <p>Static HTML prototypes for workflow UX exploration.</p>
+        </footer>
+      </aside>
+
+      <section class="preview" aria-label="Prototype preview">
+        <iframe
+          class="preview__frame"
+          src="flow-map/"
+          title="flow-map prototype"
+          name="prototype-frame"
+        ></iframe>
+      </section>
+    </main>
+  </body>
+</html>

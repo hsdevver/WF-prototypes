@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>flow-map — WF Prototype</title>
+    <link rel="stylesheet" href="../css/flow-map.css" />
+  </head>
+  <body>
+    <div class="flow-page">
+      <header class="flow-header">
+        <div class="flow-header__text">
+          <p class="flow-header__chapter">Chapter 2</p>
+          <h1 class="flow-header__title">Customer journey</h1>
+        </div>
+        <div class="flow-header__meta">
+          <span class="pill">3 / 7 complete</span>
+        </div>
+      </header>
+
+      <div class="path-viewport" id="viewport" aria-label="Chapter flow">
+        <div class="path-stage" id="stage">
+          <div class="path-map" id="map">
+            <svg class="connectors" id="connectors" aria-hidden="true"></svg>
+            <div class="columns" id="columns" role="list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-controls" aria-label="Map controls">
+        <button type="button" class="map-controls__btn" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="map-controls__btn" id="zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" class="map-controls__btn map-controls__btn--wide" id="center-next">
+          Next module
+        </button>
+      </div>
+    </div>
+
+    <script src="../js/flow-map.js" type="module"></script>
+  </body>
+</html>
