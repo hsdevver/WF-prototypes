@@ -1,0 +1,129 @@
+/* Folder-bento module cards — tab indicates branch direction; footer shows play decision */
+
+html[data-module-layout='folder'] .module-card--folder {
+  --folder-paper: #f3f2ee;
+  --folder-ink: #2a3140;
+  --folder-muted: #6b7280;
+  --folder-line: color-mix(in srgb, var(--corporate-accent, var(--theme-color, #c85a42)) 32%, #d4d2cb);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: visible;
+  background: var(--folder-paper);
+  border: 1.5px solid var(--folder-line);
+  border-radius: 18px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 10px 28px rgba(0, 0, 0, 0.14);
+}
+
+html[data-module-layout='folder'] .module-card--folder .module-folder-tab {
+  position: absolute;
+  z-index: 2;
+  height: 20px;
+  min-width: 44%;
+  max-width: 52%;
+  background: var(--folder-paper);
+  border: 1.5px solid var(--folder-line);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.5) inset;
+  pointer-events: none;
+}
+
+/* Tab placement = direction taken (or branch lane before play) */
+html[data-module-layout='folder'] .module-card--folder[data-folder-dir='up'] .module-folder-tab {
+  top: -1px;
+  right: 10%;
+  left: auto;
+}
+
+html[data-module-layout='folder'] .module-card--folder[data-folder-dir='down'] .module-folder-tab {
+  top: -1px;
+  left: 10%;
+  right: auto;
+}
+
+html[data-module-layout='folder'] .module-card--folder[data-folder-dir='right'] .module-folder-tab,
+html[data-module-layout='folder'] .module-card--folder[data-folder-dir='neutral'] .module-folder-tab {
+  top: -1px;
+  left: 50%;
+  right: auto;
+  width: 40%;
+  min-width: 0;
+  transform: translateX(-50%);
+}
+
+html[data-module-layout='folder'] .module-card--folder[data-folder-dir='start'] .module-folder-tab {
+  top: -1px;
+  left: 8%;
+  right: auto;
+  width: 34%;
+  min-width: 0;
+}
+
+html[data-module-layout='folder'] .module-folder-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 14px;
+  border-radius: 0 0 16px 16px;
+  overflow: hidden;
+}
+
+html[data-module-layout='folder'] .module-card--folder .module-thumb {
+  flex: 1;
+  min-height: 0;
+  border-radius: 0;
+}
+
+html[data-module-layout='folder'] .module-card--folder .module-thumb__img {
+  border-radius: 0;
+}
+
+html[data-module-layout='folder'] .module-card--folder.locked .module-thumb__overlay {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+}
+
+html[data-module-layout='folder'] .module-folder-decision {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  padding: 0.45rem 0.7rem 0.55rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  color: var(--folder-ink);
+  background: color-mix(in srgb, var(--folder-paper) 88%, var(--corporate-accent, var(--theme-color, #c85a42)) 12%);
+  border-top: 1px solid color-mix(in srgb, var(--folder-line) 70%, transparent);
+}
+
+html[data-module-layout='folder'] .module-card--folder:not(.locked):hover {
+  border-color: color-mix(in srgb, var(--corporate-accent, var(--theme-color, #6baed0)) 55%, var(--folder-line));
+}
+
+html[data-module-layout='folder'] .module-card--folder.is-focused,
+html[data-module-layout='folder'] .module-card--folder.focus-ring {
+  border-color: var(--corporate-accent, var(--theme-color, #6baed0));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 35%, transparent),
+    0 10px 28px rgba(0, 0, 0, 0.16);
+}
+
+/* Corporate path: folder cards replace photo-forward tile chrome */
+html[data-skin='corporate'][data-module-layout='folder'] .intro-module-wrap .module-card--folder {
+  border-radius: 18px;
+  background: var(--folder-paper);
+}
+
+html[data-skin='corporate'][data-module-layout='folder'] .intro-module-wrap .module-card--folder .module-thumb {
+  border-radius: 0;
+}

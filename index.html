@@ -1,23 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-skin="space" data-appearance="dark" data-corporate-appearance="image" data-module-layout="clean">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WF Prototypes</title>
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/cheat-panel.css" />
     <link rel="stylesheet" href="css/launcher.css" />
   </head>
   <body>
     <main class="shell">
-      <aside class="panel" aria-label="Prototype navigation">
-        <header class="panel__header">
-          <p class="panel__eyebrow">Attensi IMPACT</p>
-          <h1 class="panel__title">WF Prototypes</h1>
+      <section class="home" id="home" aria-label="Prototype hub">
+        <header class="home__header">
+          <p class="home__eyebrow">Attensi IMPACT</p>
+          <h1 class="home__title">WF Prototypes</h1>
+          <p class="home__lead">Static HTML prototypes for workflow UX exploration.</p>
         </header>
 
-        <nav class="panel__nav">
+        <nav class="home__nav" aria-label="Choose a prototype">
           <ul class="prototype-list">
             <li>
-              <a class="prototype-btn prototype-btn--active" href="flow-map/">
+              <button
+                class="prototype-btn"
+                type="button"
+                data-prototype="flow-map/"
+                data-title="flow-map prototype"
+              >
                 <span class="prototype-btn__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M4 6h6v4H4zM14 6h6v4h-6zM9 14h6v4H9z" />
@@ -26,9 +34,28 @@
                 </span>
                 <span class="prototype-btn__text">
                   <span class="prototype-btn__label">flow-map</span>
-                  <span class="prototype-btn__desc">Chapter module path</span>
+                  <span class="prototype-btn__desc">Volume module path</span>
                 </span>
-              </a>
+              </button>
+            </li>
+            <li>
+              <button
+                class="prototype-btn"
+                type="button"
+                data-prototype="workflow-intro/"
+                data-title="workflow intro prototype"
+              >
+                <span class="prototype-btn__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 4h14v16H5z" />
+                    <path d="M8 8h8M8 12h6M8 16h4" stroke-linecap="round" />
+                  </svg>
+                </span>
+                <span class="prototype-btn__text">
+                  <span class="prototype-btn__label">workflow intro</span>
+                  <span class="prototype-btn__desc">Onboarding & volume entry</span>
+                </span>
+              </button>
             </li>
             <li>
               <button class="prototype-btn prototype-btn--soon" type="button" disabled>
@@ -41,20 +68,23 @@
             </li>
           </ul>
         </nav>
-
-        <footer class="panel__footer">
-          <p>Static HTML prototypes for workflow UX exploration.</p>
-        </footer>
-      </aside>
-
-      <section class="preview" aria-label="Prototype preview">
-        <iframe
-          class="preview__frame"
-          src="flow-map/"
-          title="flow-map prototype"
-          name="prototype-frame"
-        ></iframe>
       </section>
+
     </main>
+
+    <script>
+      (function () {
+        function purgeStaleCheatPanel() {
+          var panel = document.getElementById('wf-cheat-panel');
+          if (panel && !panel.querySelector('[data-skin]')) panel.remove();
+        }
+        purgeStaleCheatPanel();
+        window.addEventListener('pageshow', function (e) {
+          if (e.persisted) purgeStaleCheatPanel();
+        });
+      })();
+    </script>
+    <script src="js/cheat-panel.js?v=corporate-hero-office-1" type="module"></script>
+    <script src="js/launcher.js" type="module"></script>
   </body>
 </html>

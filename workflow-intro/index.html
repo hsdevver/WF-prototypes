@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en" data-skin="space" data-appearance="dark" data-corporate-appearance="image" data-module-layout="clean">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>workflow intro — WF Prototype</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/cheat-panel.css" />
+    <link rel="stylesheet" href="../css/workflow-intro.css" />
+    <link rel="stylesheet" href="../css/workflow-intro-corporate.css" />
+    <link rel="stylesheet" href="../css/module-modal.css" />
+    <link rel="stylesheet" href="../css/module-modal-corporate.css" />
+    <link rel="stylesheet" href="../css/module-folder-bento.css" />
+    <style>
+      html[data-skin='corporate'][data-corporate-appearance='image'] {
+        --corporate-hero-photo: url('../assets/corporate-hero-office.jpg');
+      }
+    </style>
+  </head>
+  <body class="workflow-intro">
+    <div class="intro-page">
+      <div class="intro-sky" aria-hidden="true">
+        <div class="intro-sky-space">
+          <div class="intro-sky-layer intro-sky-layer--base"></div>
+          <div class="intro-sky-layer intro-sky-layer--glow"></div>
+          <div class="intro-sky-layer intro-sky-layer--dust"></div>
+          <div class="intro-stars intro-stars--far" id="stars-far"></div>
+          <div class="intro-stars intro-stars--mid" id="stars-mid"></div>
+          <div class="intro-stars intro-stars--near" id="stars-near"></div>
+        </div>
+        <div class="intro-sky-void">
+          <div class="intro-void-layer intro-void-layer--wash"></div>
+          <div class="intro-void-layer intro-void-layer--ceiling"></div>
+          <div class="intro-void-layer intro-void-layer--horizon"></div>
+          <div class="intro-void-layer intro-void-layer--floor"></div>
+          <div class="intro-void-layer intro-void-layer--vignette"></div>
+          <div class="intro-void-layer intro-void-layer--mist"></div>
+        </div>
+      </div>
+
+      <div class="intro-viewport" id="viewport">
+        <div class="intro-stage" id="stage">
+          <div class="intro-rail" id="rail">
+            <section class="intro-beat intro-beat--workflow" aria-label="Workflow">
+              <h1 class="intro-workflow">workflow</h1>
+            </section>
+
+            <section
+              class="intro-beat intro-beat--chapter"
+              data-chapter="1"
+              aria-label="Volume 1"
+            >
+              <div class="intro-corporate-board" id="intro-corporate-board">
+                <div class="intro-corporate-board__backdrop" aria-hidden="true"></div>
+                <header class="intro-corporate-board__hero">
+                  <nav class="intro-corporate-nav" aria-label="Volumes">
+                    <button type="button" class="intro-corporate-nav__item is-active" aria-current="page">
+                      Volume 1
+                    </button>
+                    <span class="intro-corporate-nav__connector" aria-hidden="true"></span>
+                    <button
+                      type="button"
+                      class="intro-corporate-nav__item is-locked"
+                      disabled
+                      aria-label="Volume 2 (locked)"
+                    >
+                      <span class="intro-corporate-nav__lock" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                          <path
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            d="M8 11V8a4 4 0 0 1 8 0v3"
+                          />
+                          <rect fill="currentColor" x="5" y="11" width="14" height="9" rx="2" />
+                        </svg>
+                      </span>
+                      Volume 2
+                    </button>
+                    <span class="intro-corporate-nav__connector" aria-hidden="true"></span>
+                    <button
+                      type="button"
+                      class="intro-corporate-nav__item is-locked"
+                      disabled
+                      aria-label="Volume 3 (locked)"
+                    >
+                      <span class="intro-corporate-nav__lock" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                          <path
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            d="M8 11V8a4 4 0 0 1 8 0v3"
+                          />
+                          <rect fill="currentColor" x="5" y="11" width="14" height="9" rx="2" />
+                        </svg>
+                      </span>
+                      Volume 3
+                    </button>
+                  </nav>
+                </header>
+
+                <div class="intro-corporate-board__body">
+                  <div class="intro-corporate-board__main">
+                    <div class="intro-corporate-board__copy">
+                      <h2 class="intro-corporate-board__title">Volume 1: Getting started</h2>
+                      <p class="intro-corporate-board__lead">
+                        Your walk-through for this volume—what each module is for, how they connect, and what to
+                        try first. Same energy as the laminated sheet by the copier: read once, then you’re set.
+                      </p>
+                    </div>
+
+                    <div class="intro-modules intro-corporate-board__path" id="modules" role="list">
+                      <div class="intro-path-map" id="intro-path-map">
+                        <svg class="intro-connectors" id="intro-connectors" aria-hidden="true"></svg>
+                        <div class="intro-path-grid" id="intro-columns"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="intro-corporate-leaderboard-panel">
+                    <div class="intro-corporate-leaderboard-column">
+                      <div
+                        class="intro-corporate-leaderboard-scopes"
+                        role="group"
+                        aria-label="Leaderboard scope"
+                      >
+                        <button
+                          type="button"
+                          class="intro-corporate-leaderboard-scope is-active"
+                          data-scope="department"
+                          aria-pressed="true"
+                          aria-label="Department leaderboard"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="3" />
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          class="intro-corporate-leaderboard-scope"
+                          data-scope="company"
+                          aria-pressed="false"
+                          aria-label="Company-wide leaderboard"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                            <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+                            <path d="M6 12h12M6 8h12M6 16h12M10 6h4" />
+                          </svg>
+                        </button>
+                      </div>
+                      <aside
+                        class="intro-corporate-leaderboard"
+                        id="intro-corporate-leaderboard"
+                        aria-label="Department leaderboard"
+                        data-leaderboard-scope="department"
+                      >
+                    <div class="intro-corporate-leaderboard__head">
+                      <span class="intro-corporate-leaderboard__label">Leaderboard</span>
+                      <span class="intro-corporate-leaderboard__scope" data-leaderboard-scope-label>Department</span>
+                    </div>
+                    <div class="intro-corporate-leaderboard__list-wrap">
+                      <div
+                        class="intro-corporate-leaderboard__list-fade intro-corporate-leaderboard__list-fade--top"
+                        aria-hidden="true"
+                      >
+                        <span class="intro-corporate-leaderboard__ellipsis">···</span>
+                      </div>
+                      <div class="intro-corporate-leaderboard__viewport">
+                        <ol class="intro-corporate-leaderboard__list">
+                      <li class="intro-corporate-leaderboard__row intro-corporate-leaderboard__row--peek" aria-hidden="true">
+                        <span class="intro-corporate-leaderboard__rank">2</span>
+                        <span class="intro-corporate-leaderboard__name">Jamie Kim</span>
+                        <span class="intro-corporate-leaderboard__pts">2,920</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">3</span>
+                        <span class="intro-corporate-leaderboard__name">Elena Voss</span>
+                        <span class="intro-corporate-leaderboard__pts">2,840</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">4</span>
+                        <span class="intro-corporate-leaderboard__name">Marcus Chen</span>
+                        <span class="intro-corporate-leaderboard__pts">2,710</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">5</span>
+                        <span class="intro-corporate-leaderboard__name">Priya Nair</span>
+                        <span class="intro-corporate-leaderboard__pts">2,590</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row intro-corporate-leaderboard__row--you">
+                        <span class="intro-corporate-leaderboard__rank">6</span>
+                        <span class="intro-corporate-leaderboard__name">You</span>
+                        <span class="intro-corporate-leaderboard__pts">2,480</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">7</span>
+                        <span class="intro-corporate-leaderboard__name">Jonas Lind</span>
+                        <span class="intro-corporate-leaderboard__pts">2,350</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">8</span>
+                        <span class="intro-corporate-leaderboard__name">Sofia Ruiz</span>
+                        <span class="intro-corporate-leaderboard__pts">2,210</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row intro-corporate-leaderboard__row--peek" aria-hidden="true">
+                        <span class="intro-corporate-leaderboard__rank">9</span>
+                        <span class="intro-corporate-leaderboard__name">Alex Morgan</span>
+                        <span class="intro-corporate-leaderboard__pts">2,095</span>
+                      </li>
+                        </ol>
+                      </div>
+                      <div
+                        class="intro-corporate-leaderboard__list-fade intro-corporate-leaderboard__list-fade--bottom"
+                        aria-hidden="true"
+                      >
+                        <span class="intro-corporate-leaderboard__ellipsis">···</span>
+                      </div>
+                    </div>
+                    <p class="intro-corporate-leaderboard__more" data-leaderboard-more>287 players below</p>
+                      </aside>
+
+                      <aside
+                        class="intro-corporate-activity"
+                        id="intro-corporate-activity"
+                        aria-label="Your recent moves"
+                      >
+                        <div class="intro-corporate-activity__head">
+                          <span class="intro-corporate-activity__label">Activity</span>
+                          <span class="intro-corporate-activity__hint">Recent</span>
+                        </div>
+                        <div class="intro-corporate-activity__viewport">
+                          <ol class="intro-corporate-activity__list" id="intro-activity-log-list"></ol>
+                        </div>
+                      </aside>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <h2 class="intro-chapter">Volume 1: Getting started</h2>
+            </section>
+
+          </div>
+        </div>
+
+        <div class="intro-poof" id="intro-poof" aria-hidden="true"></div>
+        <button type="button" class="intro-next-chapter" id="intro-next-chapter" hidden>
+          <span class="intro-next-chapter__label">Play next volume</span>
+          <span class="intro-next-chapter__chevron" aria-hidden="true">⌄</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="ambient" class="intro-ambient" aria-hidden="true"></div>
+
+    <script>
+      (function () {
+        function purgeStaleCheatPanel() {
+          var panel = document.getElementById('wf-cheat-panel');
+          if (panel && !panel.querySelector('[data-skin]')) panel.remove();
+        }
+        purgeStaleCheatPanel();
+        window.addEventListener('pageshow', function (e) {
+          if (e.persisted) purgeStaleCheatPanel();
+        });
+      })();
+    </script>
+    <script src="../js/cheat-panel.js?v=corporate-hero-office-1" type="module"></script>
+    <script src="../js/workflow-intro.js" type="module"></script>
+  </body>
+</html>

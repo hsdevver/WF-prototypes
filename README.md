@@ -6,7 +6,8 @@ Static HTML prototypes for Attensi IMPACT workflow UX.
 
 | Name       | Path        | Description              |
 | ---------- | ----------- | ------------------------ |
-| flow-map   | `flow-map/` | Chapter module path map  |
+| flow-map        | `flow-map/`        | Volume module path map      |
+| workflow intro  | `workflow-intro/`  | Onboarding & volume entry   |
 
 ## Local preview
 

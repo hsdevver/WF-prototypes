@@ -1,24 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-skin="space" data-appearance="dark" data-corporate-appearance="image" data-module-layout="clean">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>flow-map — WF Prototype</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/cheat-panel.css" />
     <link rel="stylesheet" href="../css/flow-map.css" />
+    <link rel="stylesheet" href="../css/module-folder-bento.css" />
   </head>
   <body>
     <div class="flow-page">
       <header class="flow-header">
         <div class="flow-header__text">
-          <p class="flow-header__chapter">Chapter 2</p>
+          <p class="flow-header__chapter">Volume 2</p>
           <h1 class="flow-header__title">Customer journey</h1>
         </div>
         <div class="flow-header__meta">
-          <span class="pill">3 / 7 complete</span>
+          <span class="pill">2 / 6 complete</span>
         </div>
       </header>
 
-      <div class="path-viewport" id="viewport" aria-label="Chapter flow">
+      <div class="path-viewport" id="viewport" aria-label="Volume flow">
         <div class="path-stage" id="stage">
           <div class="path-map" id="map">
             <svg class="connectors" id="connectors" aria-hidden="true"></svg>
@@ -36,6 +39,19 @@
       </div>
     </div>
 
+    <script>
+      (function () {
+        function purgeStaleCheatPanel() {
+          var panel = document.getElementById('wf-cheat-panel');
+          if (panel && !panel.querySelector('[data-skin]')) panel.remove();
+        }
+        purgeStaleCheatPanel();
+        window.addEventListener('pageshow', function (e) {
+          if (e.persisted) purgeStaleCheatPanel();
+        });
+      })();
+    </script>
+    <script src="../js/cheat-panel.js?v=corporate-hero-office-1" type="module"></script>
     <script src="../js/flow-map.js" type="module"></script>
   </body>
 </html>

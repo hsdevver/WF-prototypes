@@ -1,0 +1,190 @@
+/* Global skins, space appearance, corporate appearance, + theme colour (cheat panel) */
+
+:root {
+  --theme-color: #6baed0;
+  --theme-color-soft: rgba(107, 174, 208, 0.15);
+  --theme-color-ring: rgba(107, 174, 208, 0.45);
+  --theme-color-strong: rgba(107, 174, 208, 0.65);
+  --theme-color-fill: rgba(107, 174, 208, 0.72);
+}
+
+/* —— Space skin · dark (starfield) —— */
+html[data-skin='space'][data-appearance='dark'],
+html:not([data-skin])[data-appearance='dark'] {
+  --surface-primary: #0a0e1a;
+  --surface-secondary: #121a2e;
+  --text-primary: #f1f5f9;
+  --text-muted: #94a3b8;
+  --hub-bg: #0f172a;
+  --hub-panel: #1e293b;
+  --hub-panel-border: #334155;
+  --hub-icon-bg: rgba(255, 255, 255, 0.06);
+  --map-bg: #1a2234;
+  --map-grid-dot: rgba(255, 255, 255, 0.06);
+  --map-header-fade: linear-gradient(180deg, rgba(26, 34, 52, 0.95) 0%, transparent 100%);
+  --map-text: #e2e8f0;
+  --map-text-muted: #94a3b8;
+  --map-card-bg: #ffffff;
+  --map-control-bg: #1e293b;
+  --map-control-text: #f1f5f9;
+  --map-control-border: rgba(255, 255, 255, 0.1);
+  --lane-track: #2d3f52;
+  --lane-fill: color-mix(in srgb, var(--theme-color) 55%, #2d3f52);
+  --lane-fill-done: var(--theme-color);
+  --intro-sky-visible: 1;
+  --void-glow: rgba(120, 160, 220, 0.35);
+}
+
+/* —— Space skin · light (abstract void) —— */
+html[data-skin='space'][data-appearance='light'],
+html:not([data-skin])[data-appearance='light'] {
+  --surface-primary: #ffffff;
+  --surface-secondary: #f2f5f7;
+  --text-primary: #1e293b;
+  --text-muted: #64748b;
+  --hub-bg: #f2f5f7;
+  --hub-panel: #ffffff;
+  --hub-panel-border: #e2e8f0;
+  --hub-icon-bg: rgba(15, 23, 42, 0.05);
+  --map-bg: #f2f5f7;
+  --map-grid-dot: rgba(15, 23, 42, 0.06);
+  --map-header-fade: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, transparent 100%);
+  --map-text: #1e293b;
+  --map-text-muted: #64748b;
+  --map-card-bg: #ffffff;
+  --map-control-bg: #ffffff;
+  --map-control-text: #1e293b;
+  --map-control-border: rgba(15, 23, 42, 0.08);
+  --lane-track: #d4dee8;
+  --lane-fill: color-mix(in srgb, var(--theme-color) 50%, #d4dee8);
+  --lane-fill-done: var(--theme-color);
+  --intro-sky-visible: 1;
+  --void-top: #ffffff;
+  --void-mid: #f2f5f7;
+  --void-horizon: #e2e7f0;
+  --void-floor: #d8dee9;
+  --void-glow: rgba(255, 255, 255, 0.9);
+  --void-haze: rgba(200, 210, 228, 0.5);
+}
+
+/* Shared module accent (inside cards + UI details) */
+.module-card--start,
+.module-card.focus-ring,
+.module-card.is-focused {
+  box-shadow:
+    0 0 0 2px var(--theme-color-ring),
+    0 0 1.5px rgba(0, 0, 0, 0.05),
+    0 4.8px 10.2px rgba(0, 0, 0, 0.05);
+}
+
+.module-card.focus-ring,
+.module-card.is-focused {
+  box-shadow:
+    0 0 0 2px var(--theme-color-strong),
+    0 0 1.5px rgba(0, 0, 0, 0.05),
+    0 6px 14px rgba(0, 0, 0, 0.08);
+}
+
+.module-thumb::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--theme-color);
+  border-radius: 0 0 var(--thumb-radius, 6px) var(--thumb-radius, 6px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.module-card--start .module-thumb::after,
+.module-card.focus-ring .module-thumb::after,
+.module-card.is-focused .module-thumb::after {
+  opacity: 1;
+}
+
+/* Hover pop — same trigger as module hover sound (ui-sounds.js) */
+@keyframes module-hover-pop {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -2px, 0) scale(1.028);
+  }
+  100% {
+    transform: translate3d(0, -1px, 0) scale(1.018);
+  }
+}
+
+.module-card:not(.locked) {
+  transform: translate3d(0, 0, 0) scale(1);
+  transition:
+    transform 0.22s cubic-bezier(0.33, 1, 0.68, 1),
+    box-shadow 0.22s ease;
+}
+
+.module-card:not(.locked).is-hover-pop {
+  position: relative;
+  z-index: 2;
+  animation: module-hover-pop 0.3s cubic-bezier(0.25, 0.85, 0.35, 1) forwards;
+  box-shadow:
+    0 0 1.5px rgba(0, 0, 0, 0.05),
+    0 6px 14px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-card:not(.locked).is-hover-pop {
+    animation: none;
+    transform: translate3d(0, -1px, 0) scale(1.01);
+  }
+}
+
+/* Locked module reject — scale + force-field sound (ui-sounds.js) */
+.module-card.locked {
+  transform: translate3d(0, 0, 0) scale(1);
+  transition: transform 0.14s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.module-card.locked.is-locked-press {
+  transform: translate3d(0, 0, 0) scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-card.locked.is-locked-press {
+    transform: none;
+  }
+}
+
+/* —— Corporate skin (clean slate — modules & intro TBD) —— */
+html[data-skin='corporate'] {
+  --surface-primary: #ffffff;
+  --surface-secondary: #f9fafb;
+  --text-primary: #111827;
+  --text-muted: #6b7280;
+  --hub-bg: #f3f4f6;
+  --hub-panel: #ffffff;
+  --hub-panel-border: #e5e7eb;
+  --hub-icon-bg: rgba(17, 24, 39, 0.04);
+  --map-bg: #f9fafb;
+  --map-grid-dot: rgba(17, 24, 39, 0.05);
+  --map-header-fade: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, transparent 100%);
+  --map-text: #111827;
+  --map-text-muted: #6b7280;
+  --map-card-bg: #ffffff;
+  --map-control-bg: #ffffff;
+  --map-control-text: #111827;
+  --map-control-border: #e5e7eb;
+  --lane-track: #e5e7eb;
+  --lane-fill: color-mix(in srgb, var(--theme-color) 40%, #e5e7eb);
+  --lane-fill-done: var(--theme-color);
+  --intro-sky-visible: 0;
+}
+
+html[data-skin='corporate'] .intro-sky-space,
+html[data-skin='corporate'] .intro-sky-void {
+  display: none !important;
+}
+
+/* Workflow intro corporate board — see workflow-intro-corporate.css */

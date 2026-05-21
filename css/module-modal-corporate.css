@@ -1,0 +1,224 @@
+/* Module modal — corporate skin (frosted glass, matches path cards + leaderboard) */
+
+/* Path-anchored chapter modal — grows over #intro-columns, map stays visible */
+html[data-skin='corporate'] .module-modal.module-modal--corporate-path {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+html[data-skin='corporate'] .module-modal--corporate-path .module-modal__backdrop {
+  background: rgba(8, 12, 20, 0.42);
+  -webkit-backdrop-filter: blur(5px) saturate(1.15);
+  backdrop-filter: blur(5px) saturate(1.15);
+}
+
+html[data-skin='corporate'] .module-modal--corporate-path .module-modal__panel {
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--card-radius, 14px);
+  box-sizing: border-box;
+}
+
+html[data-skin='corporate'] .module-modal--corporate-path .module-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+html[data-skin='corporate'] .intro-module-wrap.is-modal-origin {
+  position: relative;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Single frame: panel sits on the wrap; hide duplicate card chrome underneath */
+html[data-skin='corporate'] .intro-module-wrap.is-modal-origin .module-card {
+  visibility: hidden;
+}
+
+html[data-skin='corporate'] .module-modal__backdrop {
+  background: rgba(8, 12, 20, 0.58);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+html[data-skin='corporate'] .module-modal__panel {
+  width: min(24rem, 100%);
+  border-radius: var(--card-radius, 14px);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.1);
+  -webkit-backdrop-filter: blur(22px) saturate(1.45);
+  backdrop-filter: blur(22px) saturate(1.45);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.28),
+    0 0 48px color-mix(in srgb, var(--corporate-accent, #c85a42) 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-skin='corporate'] .module-modal__panel {
+    background: rgba(18, 24, 34, 0.88);
+  }
+}
+
+html[data-skin='corporate'] .module-modal__close {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+html[data-skin='corporate'] .module-modal__close:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+html[data-skin='corporate'] .module-modal__hero {
+  height: 8.75rem;
+  background: rgba(8, 10, 16, 0.35);
+}
+
+html[data-skin='corporate'] .module-modal__hero::after {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(8, 10, 16, 0.25) 42%,
+    rgba(8, 10, 16, 0.82) 100%
+  );
+}
+
+html[data-skin='corporate'] .module-modal__hero-img {
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
+html[data-skin='corporate'] .module-modal__body {
+  padding: 1rem 1.15rem 1.2rem;
+}
+
+html[data-skin='corporate'] .module-modal__badge {
+  margin-bottom: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.5625rem;
+  font-weight: 300;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.88);
+  background-color: transparent;
+}
+
+html[data-skin='corporate'] .module-modal__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+html[data-skin='corporate'] .module-modal__desc {
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.55;
+}
+
+html[data-skin='corporate'] .module-modal__stats {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+html[data-skin='corporate'] .module-modal__stat dt {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+html[data-skin='corporate'] .module-modal__stat dd {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+html[data-skin='corporate'] .module-modal__play-prompt {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+html[data-skin='corporate'] .module-modal__choice {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+html[data-skin='corporate'] .module-modal__choice-label {
+  color: #ffffff;
+}
+
+html[data-skin='corporate'] .module-modal__choice-hint {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+html[data-skin='corporate'] .module-modal__choice-dir {
+  color: var(--corporate-accent, #c85a42);
+}
+
+html[data-skin='corporate'] .module-modal__choice--up:hover,
+html[data-skin='corporate'] .module-modal__choice--down:hover,
+html[data-skin='corporate'] .module-modal__choice:hover {
+  border-color: color-mix(in srgb, var(--corporate-accent, #c85a42) 45%, rgba(255, 255, 255, 0.28));
+  background: color-mix(in srgb, var(--corporate-accent, #c85a42) 12%, rgba(255, 255, 255, 0.12));
+}
+
+html[data-skin='corporate'] .module-modal__choice--down .module-modal__choice-dir {
+  color: color-mix(in srgb, var(--corporate-accent, #c85a42) 75%, #fbbf24);
+}
+
+html[data-skin='corporate'] .module-modal__back {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+html[data-skin='corporate'] .module-modal__back:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+html[data-skin='corporate'] .module-modal__cta {
+  border-radius: 12px;
+  background: var(--corporate-accent, #c85a42);
+  color: #ffffff;
+  box-shadow:
+    0 4px 18px color-mix(in srgb, var(--corporate-accent, #c85a42) 42%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+html[data-skin='corporate'] .module-modal__cta:hover {
+  filter: brightness(1.08);
+}
+
+html[data-skin='corporate'].is-module-modal-open .intro-corporate-board__copy,
+html[data-skin='corporate'].is-module-modal-open .intro-corporate-leaderboard-panel {
+  filter: blur(5px) brightness(0.82);
+}
+
+html[data-skin='corporate'].is-module-modal-open .intro-chapter {
+  filter: none;
+}

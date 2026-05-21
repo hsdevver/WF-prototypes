@@ -1,0 +1,327 @@
+/* Module detail modal — morph from map card (workflow-direction style) */
+
+.module-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.module-modal.is-visible {
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.module-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(4, 8, 18, 0.62);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.4s ease;
+}
+
+.module-modal.is-visible .module-modal__backdrop {
+  opacity: 1;
+}
+
+.module-modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(22.5rem, 100%);
+  max-height: min(88vh, 34rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  color: #0f172a;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 24px 64px rgba(0, 0, 0, 0.45),
+    0 0 48px color-mix(in srgb, var(--theme-color) 25%, transparent);
+  will-change: transform;
+  --module-hue: 205;
+}
+
+.module-modal__close {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 3;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #334155;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.module-modal__close:hover {
+  background: #fff;
+  transform: scale(1.05);
+}
+
+.module-modal__hero {
+  position: relative;
+  flex-shrink: 0;
+  height: 7.5rem;
+  overflow: hidden;
+  background: linear-gradient(
+    145deg,
+    hsl(var(--module-hue) 48% 42%) 0%,
+    hsl(var(--module-hue) 35% 22%) 100%
+  );
+}
+
+.module-modal__hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.45) 0%, transparent 58%);
+  pointer-events: none;
+}
+
+.module-modal__hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+}
+
+.module-modal__body {
+  padding: 1.1rem 1.25rem 1.25rem;
+  overflow-y: auto;
+}
+
+.module-modal__badge {
+  display: inline-block;
+  margin: 0 0 0.5rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-color) 85%, #0f172a);
+  background: color-mix(in srgb, var(--theme-color) 18%, #fff);
+}
+
+.module-modal__title {
+  margin: 0 0 0.45rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #0f172a;
+}
+
+.module-modal__desc {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.module-modal__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0 0 1.1rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.module-modal__stats.is-hidden {
+  display: none;
+}
+
+.module-modal__stat {
+  margin: 0;
+  text-align: center;
+}
+
+.module-modal__stat dt {
+  margin: 0 0 0.2rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.module-modal__stat dd {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.module-modal__play {
+  margin-bottom: 0.25rem;
+}
+
+.module-modal__play-prompt {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.module-modal__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.module-modal__choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.module-modal__choice-dir {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--theme-color, #6baed0);
+}
+
+.module-modal__choice-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.module-modal__choice-hint {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.module-modal__choice--up:hover {
+  border-color: color-mix(in srgb, var(--theme-color) 60%, #cbd5e1);
+  background: color-mix(in srgb, var(--theme-color) 8%, #fff);
+}
+
+.module-modal__choice--down:hover {
+  border-color: color-mix(in srgb, #f59e0b 55%, #cbd5e1);
+  background: color-mix(in srgb, #f59e0b 8%, #fff);
+}
+
+.module-modal__choice--down .module-modal__choice-dir {
+  color: #d97706;
+}
+
+.module-modal__choice:hover {
+  transform: translateY(-1px);
+}
+
+.module-modal__panel[data-view='choices'] .module-modal__detail {
+  display: none;
+}
+
+.module-modal__actions {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.module-modal__back,
+.module-modal__cta {
+  flex: 1;
+  min-height: 2.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+
+.module-modal__back {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+}
+
+.module-modal__back:hover {
+  background: #f8fafc;
+}
+
+.module-modal__cta {
+  border: none;
+  background: var(--theme-color, #6baed0);
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--theme-color) 40%, transparent);
+}
+
+.module-modal__cta:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+html.is-module-modal-open .intro-path-map,
+html.is-module-modal-open .intro-chapter {
+  transition: filter 0.4s ease;
+}
+
+html.is-module-modal-open .intro-path-map {
+  filter: blur(4px) brightness(0.72);
+}
+
+html.is-module-modal-open .intro-chapter {
+  filter: blur(2px) opacity(0.65);
+}
+
+html.is-module-modal-open .intro-viewport {
+  overflow: hidden;
+}
+
+.module-card.is-modal-source {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-modal__panel {
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .module-modal__backdrop {
+    transition: none;
+  }
+}

@@ -1,204 +1,196 @@
-const MODULES = [
-  {
-    id: 'm1',
-    column: 0,
-    title: 'Welcome & goals',
-    description: 'Set expectations for this chapter.',
-    progress: 100,
-    locked: false,
-    hue: 230
-  },
-  {
-    id: 'm2',
-    column: 1,
-    title: 'Map the journey',
-    description: 'Identify touchpoints across the customer lifecycle.',
-    progress: 100,
-    locked: false,
-    hue: 245
-  },
-  {
-    id: 'm3',
-    column: 1,
-    title: 'Moments that matter',
-    description: 'Prioritise high-impact interactions.',
-    progress: 72,
-    locked: false,
-    hue: 252,
-    focus: true
-  },
-  {
-    id: 'm4',
-    column: 2,
-    title: 'Design interventions',
-    description: 'Prototype improvements for key moments.',
-    progress: 0,
-    locked: false,
-    hue: 258
-  },
-  {
-    id: 'm5',
-    column: 2,
-    title: 'Measure impact',
-    description: 'Define success metrics and feedback loops.',
-    progress: 0,
-    locked: true,
-    hue: 265
-  },
-  {
-    id: 'm6',
-    column: 3,
-    title: 'Chapter reflection',
-    description: 'Summarise learnings and next steps.',
-    progress: 0,
-    locked: true,
-    hue: 272
-  }
-];
+import {
+  CONSEQUENCE_EDGES as EDGES,
+  CONSEQUENCE_PLAY_ORDER as PLAY_ORDER,
+  getChapterAriaLabel
+} from './consequence-flow.js';
+import { starsForModule } from './empathy-score.js';
+import { getRuntimeModules, isEdgeFilled } from './consequence-progress.js';
+import { applyFolderChrome, createModuleThumbLabel, syncModuleThumbLabel } from './module-layout.js';
 
-const EDGES = [
-  ['m1', 'm2'],
-  ['m1', 'm3'],
-  ['m2', 'm4'],
-  ['m3', 'm4'],
-  ['m4', 'm5'],
-  ['m5', 'm6']
-];
-
-const FILLED_EDGES = new Set(['m1|m2', 'm1|m3', 'm2|m4', 'm3|m4']);
+const START_ID = 'm1';
 
 const viewport = document.getElementById('viewport');
 const stage = document.getElementById('stage');
 const map = document.getElementById('map');
-const columnsEl = document.getElementById('columns');
+const gridEl = document.getElementById('columns');
 const connectorsEl = document.getElementById('connectors');
 
 let camera = { x: 0, y: 0, scale: 0.85 };
 let isPanning = false;
 let panStart = { x: 0, y: 0, camX: 0, camY: 0 };
-let focusId = MODULES.find((m) => m.focus)?.id ?? MODULES[2].id;
+let focusId = START_ID;
+let dimOthers = false;
 
 function edgeKey(a, b) {
   return `${a}|${b}`;
 }
 
-function columnsFromModules() {
-  const cols = [];
-  for (const mod of MODULES) {
-    while (cols.length <= mod.column) cols.push([]);
-    cols[mod.column].push(mod);
-  }
-  return cols;
+const STAR_SVG =
+  '<svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M6 1.2 7.47 4.18l3.29.48-2.38 2.32.56 3.27L6 8.3l-2.94 1.55.56-3.27-2.38-2.32 3.29-.48z"/></svg>';
+
+const PADLOCK_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="lock-shackle" fill="none" stroke="currentColor" stroke-width="2" d="M8 11V8a4 4 0 0 1 8 0v3"/><rect class="lock-body" fill="currentColor" x="5" y="11" width="14" height="9" rx="2"/></svg>';
+
+function imageUrlFor(mod) {
+  return `https://picsum.photos/seed/wf-${mod.id}/400/320`;
 }
 
-function gradientFor(hue) {
-  return `linear-gradient(135deg, hsl(${hue} 75% 82%) 0%, hsl(${hue + 12} 70% 68%) 100%)`;
+function renderStars(count) {
+  const el = document.createElement('div');
+  el.className = 'module-stars';
+  el.setAttribute('aria-hidden', count ? 'false' : 'true');
+  if (count) el.setAttribute('aria-label', `${count} of 5 stars`);
+  for (let i = 0; i < 5; i++) {
+    const star = document.createElement('span');
+    star.className = `module-star${i < count ? ' is-filled' : ''}`;
+    star.innerHTML = STAR_SVG;
+    el.appendChild(star);
+  }
+  return el;
+}
+
+/**
+ * Orthogonal “subway” path with rounded corners — matches IMPACT / Figma
+ * materiaa subway: horizontal lanes, vertical joins, soft elbows.
+ */
+function connectorPath(fromX, fromY, toX, toY, laneGap = 28, radius = 18) {
+  if (Math.abs(fromY - toY) < 1) {
+    return `M ${fromX} ${fromY} L ${toX} ${toY}`;
+  }
+
+  const dirX = toX >= fromX ? 1 : -1;
+  const exitX = fromX + dirX * laneGap;
+  const entryX = toX - dirX * laneGap;
+  const midX = (exitX + entryX) / 2;
+
+  const dy = toY - fromY;
+  const sy = dy >= 0 ? 1 : -1;
+  const ey = toX >= midX ? 1 : -1;
+
+  const r = Math.min(
+    radius,
+    Math.abs(midX - fromX) * 0.45,
+    Math.abs(midX - exitX),
+    Math.abs(dy) * 0.45,
+    Math.abs(toX - entryX) * 0.45
+  );
+
+  if (r < 3) {
+    return `M ${fromX} ${fromY} H ${midX} V ${toY} H ${toX}`;
+  }
+
+  return [
+    `M ${fromX} ${fromY}`,
+    `H ${midX - dirX * r}`,
+    `Q ${midX} ${fromY} ${midX} ${fromY + sy * r}`,
+    `V ${toY - sy * r}`,
+    `Q ${midX} ${toY} ${midX + ey * r} ${toY}`,
+    `H ${toX}`
+  ].join(' ');
+}
+
+function getNodeAnchor(nodeEl, side) {
+  let x = 0;
+  let y = 0;
+  let el = nodeEl;
+  while (el && el !== map) {
+    x += el.offsetLeft;
+    y += el.offsetTop;
+    el = el.offsetParent;
+  }
+  if (side === 'right') {
+    x += nodeEl.offsetWidth;
+  }
+  y += nodeEl.offsetHeight / 2;
+  return { x, y };
 }
 
 function renderModules() {
-  const columns = columnsFromModules();
-  columnsEl.innerHTML = '';
+  gridEl.className = 'path-grid';
+  gridEl.innerHTML = '';
 
-  columns.forEach((colMods, colIdx) => {
-    const column = document.createElement('div');
-    column.className = 'column';
-    column.setAttribute('role', 'group');
-    column.dataset.column = String(colIdx);
+  for (const mod of getRuntimeModules()) {
+    const wrap = document.createElement('div');
+    wrap.className = 'node-wrap';
+    wrap.dataset.moduleAnchor = mod.id;
+    wrap.style.gridColumn = String(mod.column);
+    wrap.style.gridRow = String(mod.row);
+    if (dimOthers && mod.id !== focusId) wrap.classList.add('dimmed');
+    if (mod.start) wrap.classList.add('node-wrap--start');
+    if (mod.id === 'm5') wrap.classList.add('node-wrap--hub');
 
-    for (const mod of colMods) {
-      const wrap = document.createElement('div');
-      wrap.className = 'node-wrap';
-      wrap.dataset.moduleAnchor = mod.id;
-      if (mod.id !== focusId) wrap.classList.add('dimmed');
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'module-card';
+    card.dataset.moduleId = mod.id;
+    card.title = getChapterAriaLabel(mod).replace(/ \(locked\)$/, '');
+    card.setAttribute('aria-label', getChapterAriaLabel(mod));
+    if (mod.locked) card.classList.add('locked');
+    if (mod.start) card.classList.add('module-card--start');
+    if (mod.id === focusId) card.classList.add('focus-ring');
 
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'module-card';
-      card.dataset.moduleId = mod.id;
-      if (mod.locked) card.classList.add('locked');
-      if (mod.id === focusId) card.classList.add('focus-ring');
+    const thumb = document.createElement('div');
+    thumb.className = 'module-thumb';
 
-      const image = document.createElement('div');
-      image.className = 'module-image';
-      if (mod.locked) image.classList.add('module-image--locked');
-      image.style.background = gradientFor(mod.hue);
+    const img = document.createElement('img');
+    img.className = 'module-thumb__img';
+    img.src = imageUrlFor(mod);
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
 
-      if (mod.locked) {
-        const lock = document.createElement('div');
-        lock.className = 'lock-badge';
-        lock.innerHTML =
-          '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>';
-        image.appendChild(lock);
-      }
+    const overlay = document.createElement('div');
+    overlay.className = 'module-thumb__overlay';
+    overlay.setAttribute('aria-hidden', 'true');
 
-      const info = document.createElement('div');
-      info.className = 'module-info';
-      info.innerHTML = `<h3>${mod.title}</h3><p>${mod.description}</p>`;
+    thumb.append(img, overlay, createModuleThumbLabel(mod));
 
-      if (mod.progress > 0) {
-        const bar = document.createElement('div');
-        bar.className = 'progress-bar';
-        bar.innerHTML = `<div class="progress-fill" style="width:${mod.progress}%"></div>`;
-        const pct = document.createElement('p');
-        pct.className = 'progress-text';
-        pct.textContent = `${mod.progress}%`;
-        info.appendChild(bar);
-        info.appendChild(pct);
-      }
-
-      card.append(image, info);
-      card.addEventListener('click', () => setFocus(mod.id));
-      wrap.appendChild(card);
-      column.appendChild(wrap);
+    if (mod.locked) {
+      const lock = document.createElement('div');
+      lock.className = 'module-padlock';
+      lock.innerHTML = PADLOCK_SVG;
+      thumb.appendChild(lock);
+    } else {
+      thumb.appendChild(renderStars(starsForModule(mod)));
     }
 
-    columnsEl.appendChild(column);
-  });
-}
-
-function getNodeCenter(nodeEl) {
-  const mapRect = map.getBoundingClientRect();
-  const nodeRect = nodeEl.getBoundingClientRect();
-  return {
-    x: (nodeRect.left + nodeRect.width / 2 - mapRect.left) / camera.scale,
-    y: (nodeRect.top + nodeRect.height / 2 - mapRect.top) / camera.scale
-  };
-}
-
-function connectorPath(from, to) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const c1x = from.x + dx * 0.45;
-  const c2x = to.x - dx * 0.45;
-  return `M ${from.x} ${from.y} C ${c1x} ${from.y}, ${c2x} ${to.y}, ${to.x} ${to.y}`;
+    card.append(thumb);
+    applyFolderChrome(card, mod);
+    card.addEventListener('click', () => setFocus(mod.id));
+    wrap.appendChild(card);
+    gridEl.appendChild(wrap);
+  }
 }
 
 function measureConnectors() {
-  const segments = [];
   let maxX = 0;
   let maxY = 0;
+  const segments = [];
 
   for (const [fromId, toId] of EDGES) {
     const fromEl = map.querySelector(`[data-module-anchor="${fromId}"]`);
     const toEl = map.querySelector(`[data-module-anchor="${toId}"]`);
     if (!fromEl || !toEl) continue;
 
-    const from = getNodeCenter(fromEl);
-    const to = getNodeCenter(toEl);
-    const d = connectorPath(from, to);
-    const length = Math.hypot(to.x - from.x, to.y - from.y) * 1.35;
+    const from = getNodeAnchor(fromEl, 'right');
+    const to = getNodeAnchor(toEl, 'left');
+    const d = connectorPath(from.x, from.y, to.x, to.y);
+
     maxX = Math.max(maxX, from.x, to.x);
     maxY = Math.max(maxY, from.y, to.y);
-    segments.push({ fromId, toId, d, length });
+    segments.push({ fromId, toId, d });
   }
 
-  connectorsEl.setAttribute('width', String(Math.max(maxX + 80, map.offsetWidth)));
-  connectorsEl.setAttribute('height', String(Math.max(maxY + 80, map.offsetHeight)));
+  const w = Math.max(maxX + 120, map.offsetWidth);
+  const h = Math.max(maxY + 120, map.offsetHeight);
+  connectorsEl.setAttribute('width', String(w));
+  connectorsEl.setAttribute('height', String(h));
+  connectorsEl.setAttribute('viewBox', `0 0 ${w} ${h}`);
   connectorsEl.innerHTML = '';
 
   for (const seg of segments) {
     const key = edgeKey(seg.fromId, seg.toId);
-    const filled = FILLED_EDGES.has(key);
+    const filled = isEdgeFilled(key);
 
     const track = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     track.setAttribute('d', seg.d);
@@ -207,16 +199,21 @@ function measureConnectors() {
     const fill = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     fill.setAttribute('d', seg.d);
     fill.setAttribute('class', `lane-fill${filled ? ' filled' : ''}`);
-    if (filled) {
-      fill.style.strokeDasharray = String(seg.length);
-      fill.style.strokeDashoffset = '0';
-    } else {
-      fill.style.strokeDasharray = String(seg.length);
-      fill.style.strokeDashoffset = String(seg.length);
-    }
 
     connectorsEl.append(track, fill);
   }
+
+  requestAnimationFrame(() => {
+    const tracks = connectorsEl.querySelectorAll('path.lane-track');
+    const fills = connectorsEl.querySelectorAll('path.lane-fill');
+    fills.forEach((fillEl, i) => {
+      const len = tracks[i]?.getTotalLength() ?? 0;
+      const key = edgeKey(segments[i].fromId, segments[i].toId);
+      const filled = isEdgeFilled(key);
+      fillEl.style.strokeDasharray = String(len);
+      fillEl.style.strokeDashoffset = filled ? '0' : String(len);
+    });
+  });
 }
 
 function applyCamera(animate = false) {
@@ -224,13 +221,33 @@ function applyCamera(animate = false) {
   stage.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`;
 }
 
-function centerOnModule(id, animate = true) {
+function moduleCenter(id) {
   const node = map.querySelector(`[data-module-anchor="${id}"]`);
-  if (!node || !viewport) return;
+  if (!node) return null;
+  const left = getNodeAnchor(node, 'left');
+  return { x: left.x + node.offsetWidth / 2, y: left.y };
+}
+
+function centerOnStart(animate = true) {
+  const center = moduleCenter(START_ID);
+  if (!center || !viewport) return;
+  const vp = viewport.getBoundingClientRect();
+  const scale = Math.min(0.9, Math.max(0.72, camera.scale));
+  camera = {
+    scale,
+    x: vp.width * 0.3 - center.x * scale,
+    y: vp.height * 0.5 - center.y * scale
+  };
+  applyCamera(animate);
+  requestAnimationFrame(measureConnectors);
+}
+
+function centerOnModule(id, animate = true) {
+  const center = moduleCenter(id);
+  if (!center || !viewport) return;
 
   const vp = viewport.getBoundingClientRect();
-  const center = getNodeCenter(node);
-  const scale = Math.min(1.1, Math.max(0.75, camera.scale));
+  const scale = Math.min(1.05, Math.max(0.72, camera.scale));
 
   camera = {
     x: vp.width / 2 - center.x * scale,
@@ -244,22 +261,23 @@ function centerOnModule(id, animate = true) {
 function fitOverview(animate = false) {
   const bounds = map.getBoundingClientRect();
   const vp = viewport.getBoundingClientRect();
-  const pad = 48;
+  const pad = 56;
   const scale = Math.min(
     (vp.width - pad * 2) / bounds.width,
     (vp.height - pad * 2) / bounds.height,
     1
   );
   camera = {
-    scale: Math.max(0.55, scale),
+    scale: Math.max(0.5, scale),
     x: (vp.width - bounds.width * scale) / 2,
-    y: (vp.height - bounds.height * scale) / 2 + 12
+    y: (vp.height - bounds.height * scale) / 2 + 8
   };
   applyCamera(animate);
   requestAnimationFrame(measureConnectors);
 }
 
 function setFocus(id) {
+  dimOthers = true;
   focusId = id;
   document.querySelectorAll('.node-wrap').forEach((el) => {
     el.classList.toggle('dimmed', el.dataset.moduleAnchor !== id);
@@ -271,9 +289,11 @@ function setFocus(id) {
 }
 
 function nextPlayableId() {
-  const playable = MODULES.filter((m) => !m.locked);
+  const playable = PLAY_ORDER.map((id) => getRuntimeModules().find((m) => m.id === id)).filter(
+    (m) => m && !m.locked
+  );
   const idx = playable.findIndex((m) => m.id === focusId);
-  return playable[(idx + 1) % playable.length]?.id ?? focusId;
+  return playable[(idx + 1) % playable.length]?.id ?? START_ID;
 }
 
 function zoomAt(factor) {
@@ -334,9 +354,22 @@ document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.2));
 document.getElementById('zoom-out').addEventListener('click', () => zoomAt(1 / 1.2));
 document.getElementById('center-next').addEventListener('click', () => setFocus(nextPlayableId()));
 
+window.addEventListener('wf-module-layout-change', () => {
+  renderModules();
+  requestAnimationFrame(measureConnectors);
+});
+
+window.addEventListener('wf-progress-change', () => {
+  renderModules();
+  requestAnimationFrame(measureConnectors);
+});
+
 renderModules();
-fitOverview(false);
-window.setTimeout(() => centerOnModule(focusId, true), 400);
+requestAnimationFrame(() => {
+  measureConnectors();
+  centerOnStart(false);
+  window.setTimeout(() => centerOnStart(true), 300);
+});
 
 const ro = new ResizeObserver(() => measureConnectors());
 ro.observe(viewport);
