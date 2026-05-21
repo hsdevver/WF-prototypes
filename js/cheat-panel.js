@@ -23,6 +23,7 @@ import {
 } from './ambient-music.js';
 import {
   resetConsequenceProgress,
+  setCorporateVolumeCheatMode,
   unlockAllConsequenceProgress
 } from './consequence-progress.js';
 import {
@@ -37,7 +38,7 @@ import {
 } from './ui-sounds.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = '9';
+const PANEL_VERSION = '11';
 
 function panelIsCurrent(panel) {
   return (
@@ -227,6 +228,14 @@ function buildPanel() {
         ? `<section class="cheat-panel__section" aria-labelledby="cheat-path-label">
       <span class="cheat-panel__label" id="cheat-path-label">Path progress</span>
       <div class="cheat-panel__path-actions">
+        ${
+          state.skin === 'corporate' || state.skin === 'space'
+            ? `<div class="cheat-panel__path-row" role="group" aria-label="Volume access">
+          <button type="button" class="cheat-panel__reset-path" data-lock-all-volumes>Lock all volumes</button>
+          <button type="button" class="cheat-panel__reset-path" data-unlock-all-volumes>Unlock all volumes</button>
+        </div>`
+            : ''
+        }
         <button type="button" class="cheat-panel__reset-path" data-unlock-all-progress>Unlock all chapters</button>
         <button type="button" class="cheat-panel__reset-path" data-reset-progress>Reset unlocked modules</button>
       </div>
@@ -480,6 +489,16 @@ function wirePanel(panel) {
   });
 
   window.addEventListener('wf-hover-sound-change', () => syncPanelUi(panel));
+
+  panel.querySelector('[data-lock-all-volumes]')?.addEventListener('click', () => {
+    setCorporateVolumeCheatMode('locked');
+    window.dispatchEvent(new CustomEvent('wf-corporate-volumes-cheat'));
+  });
+
+  panel.querySelector('[data-unlock-all-volumes]')?.addEventListener('click', () => {
+    setCorporateVolumeCheatMode('all');
+    window.dispatchEvent(new CustomEvent('wf-corporate-volumes-cheat'));
+  });
 
   panel.querySelector('[data-unlock-all-progress]')?.addEventListener('click', () => {
     unlockAllConsequenceProgress();

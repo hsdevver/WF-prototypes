@@ -211,7 +211,7 @@ export function cordBridgePathD(p0, fromSide, p3, toSide, options = {}) {
  * Orthogonal “subway map” connector — horizontal lanes, vertical joins, rounded elbows.
  * Matches Vignelli-style diagram paths (flow-map connectorPath, tuned for intro cords).
  */
-function subwayPathRightLeft(fromX, fromY, toX, toY, laneGap = 28, radius = 28) {
+function subwayPathRightLeft(fromX, fromY, toX, toY, laneGap = 28, radius = 28, midXOverride = null) {
   if (Math.abs(fromY - toY) < 1) {
     return `M ${fromX.toFixed(2)} ${fromY.toFixed(2)} L ${toX.toFixed(2)} ${toY.toFixed(2)}`;
   }
@@ -219,7 +219,7 @@ function subwayPathRightLeft(fromX, fromY, toX, toY, laneGap = 28, radius = 28) 
   const dirX = toX >= fromX ? 1 : -1;
   const exitX = fromX + dirX * laneGap;
   const entryX = toX - dirX * laneGap;
-  const midX = (exitX + entryX) / 2;
+  const midX = midXOverride ?? (exitX + entryX) / 2;
 
   const dy = toY - fromY;
   const sy = dy >= 0 ? 1 : -1;
@@ -249,6 +249,9 @@ function subwayPathRightLeft(fromX, fromY, toX, toY, laneGap = 28, radius = 28) 
 
 /** Body stroke width — parallel lanes touch with no gutter (corporate subway). */
 export const SUBWAY_LANE_PITCH = 11;
+
+/** Horizontal spacing between vertical subway trunks (avoids tube crossings). */
+export const SUBWAY_MID_LANE_PITCH = 18;
 
 /**
  * Stack fork/merge endpoints on the same card edge so tubes exit inline (no gap).
@@ -290,6 +293,83 @@ export function applySubwayLaneBundles(segments, lanePitch = SUBWAY_LANE_PITCH) 
 }
 
 /**
+ * Stagger each edge's vertical trunk (midX) so parallel tubes between the same columns do not cross.
+ * @param {{ key: string, isSubway?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object }[]} segments
+ */
+export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
+  if (!segments?.length) return;
+
+  const buckets = new Map();
+
+  for (const seg of segments) {
+    if (!seg.isSubway) continue;
+    const rl = seg.fromSide === 'right' && seg.toSide === 'left';
+    const lr = seg.fromSide === 'left' && seg.toSide === 'right';
+    if (!rl && !lr) continue;
+
+    const fromX = rl ? seg.p0.x : seg.p3.x;
+    const toX = rl ? seg.p3.x : seg.p0.x;
+    const key = `${Math.round(fromX / 12)}|${Math.round(toX / 12)}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push({ seg, rl });
+  }
+
+  for (const list of buckets.values()) {
+    if (list.length < 2) continue;
+
+    list.sort((a, b) => {
+      const ay = (a.seg.p0.y + a.seg.p3.y) * 0.5;
+      const by = (b.seg.p0.y + b.seg.p3.y) * 0.5;
+      return ay - by;
+    });
+
+    const n = list.length;
+    list.forEach((item, i) => {
+      const { seg, rl } = item;
+      const from = rl ? seg.p0 : seg.p3;
+      const to = rl ? seg.p3 : seg.p0;
+      const dx = to.x - from.x;
+      const dirX = dx >= 0 ? 1 : -1;
+      const laneGap = Math.min(56, Math.max(24, Math.abs(dx) * 0.22));
+      const exitX = from.x + dirX * laneGap;
+      const entryX = to.x - dirX * laneGap;
+      const baseMidX = (exitX + entryX) * 0.5;
+      const offset = (i - (n - 1) / 2) * pitch;
+      seg.anchorOpts = { ...seg.anchorOpts, subwayMidX: baseMidX + offset };
+    });
+  }
+}
+
+const SUBWAY_PAINT_DY_EPS = 4;
+
+/**
+ * Paint-order for subway cords: downward edges under upward edges at elbows.
+ * SVG stacks later siblings on top; call after lane bundling / midX stagger.
+ * @param {{ key: string, isSubway?: boolean, p0: {x:number,y:number}, p3: {x:number,y:number} }[]} segments
+ */
+export function sortSubwayCordPaintOrder(segments) {
+  if (!segments?.length) return;
+
+  const tier = (seg) => {
+    if (!seg.isSubway) return 1;
+    const dy = seg.p3.y - seg.p0.y;
+    if (dy > SUBWAY_PAINT_DY_EPS) return 0;
+    if (dy < -SUBWAY_PAINT_DY_EPS) return 2;
+    return 1;
+  };
+
+  segments.sort((a, b) => {
+    const ta = tier(a);
+    const tb = tier(b);
+    if (ta !== tb) return ta - tb;
+    const ay = (a.p0.y + a.p3.y) * 0.5;
+    const by = (b.p0.y + b.p3.y) * 0.5;
+    if (ay !== by) return ay - by;
+    return a.key.localeCompare(b.key);
+  });
+}
+
+/**
  * Subway-style cord path for corporate intro (smooth elbows, no rope sag).
  */
 export function subwayCordPathD(p0, fromSide, p3, toSide, options = {}) {
@@ -303,7 +383,7 @@ export function subwayCordPathD(p0, fromSide, p3, toSide, options = {}) {
     const radius =
       options.radius ??
       Math.min(40, Math.max(22, Math.abs(dy) * 0.22, Math.abs(dx) * 0.1));
-    return subwayPathRightLeft(p0.x, p0.y, p3.x, p3.y, laneGap, radius);
+    return subwayPathRightLeft(p0.x, p0.y, p3.x, p3.y, laneGap, radius, options.subwayMidX);
   }
 
   if (fromSide === 'left' && toSide === 'right') {
@@ -312,7 +392,7 @@ export function subwayCordPathD(p0, fromSide, p3, toSide, options = {}) {
     const radius =
       options.radius ??
       Math.min(40, Math.max(22, Math.abs(dy) * 0.22, Math.abs(dx) * 0.1));
-    return subwayPathRightLeft(p3.x, p3.y, p0.x, p0.y, laneGap, radius);
+    return subwayPathRightLeft(p3.x, p3.y, p0.x, p0.y, laneGap, radius, options.subwayMidX);
   }
 
   return cordPathD(p0, fromSide, p3, toSide, options);

@@ -1,6 +1,9 @@
 import {
   CHAPTER_1_END_MODULE_ID,
-  getChapterGraph
+  CHAPTER_2_END_MODULE_ID,
+  CHAPTER_3_END_MODULE_ID,
+  getChapterGraph,
+  MODULE_STAR_UNLOCK_GATES
 } from './consequence-flow.js';
 import {
   computeEmpathyScore,
@@ -10,6 +13,19 @@ import {
 } from './empathy-score.js';
 
 const STORAGE_KEY = 'wf-consequence-progress';
+const CORPORATE_VOLUME_CHEAT_KEY = 'wf-cheat-corporate-volumes';
+
+/** @returns {'all' | 'locked' | null} */
+export function getCorporateVolumeCheatMode() {
+  const mode = sessionStorage.getItem(CORPORATE_VOLUME_CHEAT_KEY);
+  return mode === 'all' || mode === 'locked' ? mode : null;
+}
+
+/** @param {'all' | 'locked' | null} mode */
+export function setCorporateVolumeCheatMode(mode) {
+  if (mode) sessionStorage.setItem(CORPORATE_VOLUME_CHEAT_KEY, mode);
+  else sessionStorage.removeItem(CORPORATE_VOLUME_CHEAT_KEY);
+}
 
 const PLAYED_BACKFILL_SCORES = {
   m2: EMPATHY_SCORE_FOUR_STARS,
@@ -20,6 +36,7 @@ function createInitialState() {
   return {
     currentChapter: 1,
     chapterHandoffDone: false,
+    chapter3HandoffDone: false,
     unlocked: ['m1'],
     completed: [],
     filledEdges: [],
@@ -73,9 +90,12 @@ function loadState() {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return createInitialState();
     const parsed = JSON.parse(raw);
+    const chapter =
+      parsed.currentChapter === 2 || parsed.currentChapter === 3 ? parsed.currentChapter : 1;
     const state = {
-      currentChapter: parsed.currentChapter === 2 ? 2 : 1,
+      currentChapter: chapter,
       chapterHandoffDone: Boolean(parsed.chapterHandoffDone),
+      chapter3HandoffDone: Boolean(parsed.chapter3HandoffDone),
       unlocked: Array.isArray(parsed.unlocked) ? parsed.unlocked : ['m1'],
       completed: Array.isArray(parsed.completed) ? parsed.completed : [],
       filledEdges: Array.isArray(parsed.filledEdges) ? parsed.filledEdges : [],
@@ -107,23 +127,37 @@ function saveState(state) {
 
 let state = loadState();
 
+/** When set, module/cord catalog reads this chapter (corporate volume browse). */
+let catalogChapter = null;
+
 function notifyChange(detail = {}) {
   window.dispatchEvent(new CustomEvent('wf-progress-change', { detail }));
 }
 
+export function getCatalogChapter() {
+  return catalogChapter ?? state.currentChapter;
+}
+
+/** @param {number | null} chapter — null resets to progress chapter */
+export function setCatalogChapter(chapter) {
+  catalogChapter = chapter === state.currentChapter ? null : chapter;
+}
+
 function moduleCatalog() {
-  return getChapterGraph(state.currentChapter).modules;
+  return getChapterGraph(getCatalogChapter()).modules;
 }
 
 export function resetConsequenceProgress() {
   state = createInitialState();
+  catalogChapter = null;
+  setCorporateVolumeCheatMode(null);
   saveState(state);
   notifyChange({ reset: true });
 }
 
 function allModuleIds() {
   const ids = new Set();
-  for (const chapter of [1, 2]) {
+  for (const chapter of [1, 2, 3]) {
     for (const mod of getChapterGraph(chapter).modules) ids.add(mod.id);
   }
   return [...ids];
@@ -140,7 +174,7 @@ function simulateFullPlayState() {
   const edgeLabels = {};
   const moduleScores = { ...state.moduleScores };
 
-  for (const chapter of [1, 2]) {
+  for (const chapter of [1, 2, 3]) {
     const graph = getChapterGraph(chapter);
 
     for (const [from, to] of graph.edges) {
@@ -183,6 +217,8 @@ export function unlockAllConsequenceProgress() {
   state.edgeLabels = simulated.edgeLabels;
   state.moduleScores = simulated.moduleScores;
   state.chapterHandoffDone = true;
+  state.chapter3HandoffDone = true;
+  state.currentChapter = 3;
 
   saveState(state);
   const newlyUnlocked = allIds.filter((id) => !before.has(id));
@@ -204,9 +240,27 @@ export function isChapter1Complete() {
 export function beginChapter2() {
   state.currentChapter = 2;
   state.chapterHandoffDone = true;
+  catalogChapter = null;
   if (!state.unlocked.includes('c2m1')) state.unlocked.push('c2m1');
   saveState(state);
   notifyChange({ chapter: 2 });
+}
+
+export function isChapter3HandoffDone() {
+  return state.chapter3HandoffDone;
+}
+
+export function isChapter2Complete() {
+  return state.completed.includes(CHAPTER_2_END_MODULE_ID);
+}
+
+export function beginChapter3() {
+  state.currentChapter = 3;
+  state.chapter3HandoffDone = true;
+  catalogChapter = null;
+  if (!state.unlocked.includes('c3m1')) state.unlocked.push('c3m1');
+  saveState(state);
+  notifyChange({ chapter: 3 });
 }
 
 export function getRuntimeModule(id) {
@@ -223,6 +277,17 @@ export function getRuntimeModule(id) {
     lastDirection: state.lastDirections[id] ?? null,
     empathyScore
   };
+}
+
+/** True when this module already has a persisted star score from a prior play. */
+export function hadEarnedStarsBeforePlay(moduleId) {
+  const score = state.moduleScores[moduleId];
+  return typeof score === 'number' && starsFromEmpathyScore(score) > 0;
+}
+
+/** Activity log mode — call before applyPlayOutcome so the current run is not counted. */
+export function playModeBeforeOutcome(moduleId) {
+  return hadEarnedStarsBeforePlay(moduleId) ? 'replayed' : 'live';
 }
 
 export function getModuleEmpathyScore(moduleId) {
@@ -265,11 +330,11 @@ export function getRuntimeModules() {
 }
 
 export function getChapterEdges() {
-  return getChapterGraph(state.currentChapter).edges;
+  return getChapterGraph(getCatalogChapter()).edges;
 }
 
 export function getChapterCordAnchors() {
-  return getChapterGraph(state.currentChapter).cordAnchors;
+  return getChapterGraph(getCatalogChapter()).cordAnchors;
 }
 
 export function isEdgeFilled(key) {
@@ -284,18 +349,61 @@ export function getEdgeChoiceLabel(edgeKey) {
   return state.edgeLabels[edgeKey] ?? null;
 }
 
+function resolveScoreAfterPlay(moduleId, outcome) {
+  const base = moduleCatalog().find((m) => m.id === moduleId);
+  let score = computeEmpathyScore(base, outcome);
+  if (score == null) return null;
+
+  const prev = state.moduleScores[moduleId];
+  let nextScore = typeof prev === 'number' ? Math.max(prev, score) : score;
+  const wasPlayed = state.completed.includes(moduleId);
+  if (moduleId === 'm8' && wasPlayed && starsFromEmpathyScore(nextScore) < 4) {
+    nextScore = Math.max(nextScore, EMPATHY_SCORE_FOUR_STARS);
+  }
+  return nextScore;
+}
+
 /**
  * @param {string} moduleId
  * @param {import('./consequence-flow.js').PlayOutcome} outcome
- * @returns {string[]} newly unlocked module ids
+ * @returns {boolean}
+ */
+export function wouldBlockStarGateUnlock(moduleId, outcome) {
+  const gate = MODULE_STAR_UNLOCK_GATES[moduleId];
+  if (!gate) return false;
+
+  const score = resolveScoreAfterPlay(moduleId, outcome);
+  if (score == null) return false;
+  return starsFromEmpathyScore(score) < gate.minStars;
+}
+
+/**
+ * @param {string} moduleId
+ * @param {import('./consequence-flow.js').PlayOutcome} outcome
+ * @returns {{ newlyUnlocked: string[], starGateBlocked: boolean }}
  */
 export function applyPlayOutcome(moduleId, outcome) {
   const before = new Set(state.unlocked);
+  const gate = MODULE_STAR_UNLOCK_GATES[moduleId];
 
-  for (const id of outcome.unlocks ?? []) {
+  let unlocks = [...(outcome.unlocks ?? [])];
+  let fills = [...(outcome.fills ?? [])];
+
+  let score = resolveScoreAfterPlay(moduleId, outcome);
+
+  let starGateBlocked = false;
+  if (gate && score != null && starsFromEmpathyScore(score) < gate.minStars) {
+    starGateBlocked = true;
+    const blockedUnlocks = new Set(gate.unlocks);
+    const blockedFills = new Set(gate.fills);
+    unlocks = unlocks.filter((id) => !blockedUnlocks.has(id));
+    fills = fills.filter((key) => !blockedFills.has(key));
+  }
+
+  for (const id of unlocks) {
     if (!state.unlocked.includes(id)) state.unlocked.push(id);
   }
-  for (const key of outcome.fills ?? []) {
+  for (const key of fills) {
     if (!state.filledEdges.includes(key)) state.filledEdges.push(key);
     const toId = key.split('|')[1];
     if (toId && !state.unlocked.includes(toId)) state.unlocked.push(toId);
@@ -306,21 +414,17 @@ export function applyPlayOutcome(moduleId, outcome) {
   if (outcome.lastChoice) state.lastChoices[moduleId] = outcome.lastChoice;
   if (outcome.direction) state.lastDirections[moduleId] = outcome.direction;
 
-  const base = moduleCatalog().find((m) => m.id === moduleId);
-  const score = computeEmpathyScore(base, outcome);
   if (score != null) {
-    const prev = state.moduleScores[moduleId];
-    state.moduleScores[moduleId] =
-      typeof prev === 'number' ? Math.max(prev, score) : score;
+    state.moduleScores[moduleId] = score;
   }
 
   saveState(state);
 
-  const newlyUnlocked = (outcome.unlocks ?? []).filter((id) => !before.has(id));
-  notifyChange({ moduleId, newlyUnlocked });
-  return newlyUnlocked;
+  const newlyUnlocked = unlocks.filter((id) => !before.has(id));
+  notifyChange({ moduleId, newlyUnlocked, starGateBlocked });
+  return { newlyUnlocked, starGateBlocked };
 }
 
 export function getPlayScenario(moduleId) {
-  return getChapterGraph(state.currentChapter).scenarios[moduleId] ?? null;
+  return getChapterGraph(getCatalogChapter()).scenarios[moduleId] ?? null;
 }

@@ -9,8 +9,19 @@ import { getPlayScenario, getRuntimeModule, syncModuleScoresFromActivity } from 
 const STORAGE_KEY = 'wf-proto-activity-log';
 const MAX_STORED = 80;
 const VISIBLE_ROWS = 7;
-const ACTIVITY_HEIGHT_RATIO = 0.75;
-const ACTIVITY_MIN_HEIGHT_PX = 120;
+const ACTIVITY_MIN_HEIGHT_PX = 104;
+const ACTIVITY_MAX_HEIGHT_PX = 184;
+const ACTIVITY_FLEX_SHARE = 0.26;
+const LB_VIEWPORT_MIN_ROWS = 4;
+const LB_VIEWPORT_MAX_ROWS = 7.5;
+const SIDE_COLUMN_MIN_PX = 280;
+const SIDE_COLUMN_BOTTOM_PAD_PX = 20;
+const PROFILE_VH_SHARE = 0.215;
+const FEEDBACK_VH_SHARE = 0.17;
+const PROFILE_MIN_PX = 152;
+const PROFILE_MAX_PX = 212;
+const FEEDBACK_MIN_PX = 124;
+const FEEDBACK_MAX_PX = 172;
 const BRANCH_BLINK_MS = 1200;
 const BRANCH_RESOLVE_MS = 420;
 const UNLOCK_STAGGER_MS = 140;
@@ -41,11 +52,22 @@ let activityHeightObserver = null;
 let entries = loadEntries();
 
 /** Chunky glyphs — no frame, sit on frosted panel */
+/** Decision tree — root split into four branch endpoints (maps to path quadrants). */
+const DECISION_TREE_ICON_SVG = `<svg class="intro-corporate-activity__tree-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <path class="intro-corporate-activity__tree-edge" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" d="M12 6.25V10.25M12 10.25 6.75 13.25M12 10.25 17.25 13.25M6.75 13.25 5 18M6.75 13.25 8.5 18M17.25 13.25 15.5 18M17.25 13.25 19 18"/>
+  <circle class="intro-corporate-activity__tree-node intro-corporate-activity__tree-node--root" cx="12" cy="5" r="2" fill="currentColor"/>
+  <circle class="intro-corporate-activity__tree-node" data-quad="tl" cx="5" cy="18.25" r="2" fill="currentColor"/>
+  <circle class="intro-corporate-activity__tree-node" data-quad="bl" cx="8.5" cy="18.25" r="2" fill="currentColor"/>
+  <circle class="intro-corporate-activity__tree-node" data-quad="tr" cx="15.5" cy="18.25" r="2" fill="currentColor"/>
+  <circle class="intro-corporate-activity__tree-node" data-quad="br" cx="19" cy="18.25" r="2" fill="currentColor"/>
+</svg>`;
+
 const ACTIVITY_ICON_SVG = {
   played: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="currentColor" d="M8.5 6.75v10.5l9-5.25-9-5.25z"/></svg>`,
-  replayed: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" d="M7.5 7.5v3.5H4M16.5 16.5v-3.5H20"/><path fill="currentColor" d="M8.5 8.25 6.2 12 8.5 15.75 12 16.5 15.5 15.75 17.8 12 15.5 8.25 12 7.5z"/></svg>`,
+  replayed: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 3v5h5"/></svg>`,
   scored: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5.5" y="13.25" width="4" height="6.25" fill="currentColor"/><rect x="10" y="10.25" width="4" height="9.25" fill="currentColor"/><rect x="14.5" y="7.25" width="4" height="12.25" fill="currentColor"/></svg>`,
-  decision: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path fill="currentColor" d="M4.5 8.25 9.25 12 4.5 15.75z"/><path fill="currentColor" d="M19.5 8.25 14.75 12 19.5 15.75z"/></svg>`,
+  decision: DECISION_TREE_ICON_SVG,
+  branch: DECISION_TREE_ICON_SVG,
   unlocked: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="square" d="M8.75 12V9.5a3.25 3.25 0 0 1 6.5 0V12"/><rect x="7" y="12" width="10" height="7.25" fill="currentColor"/></svg>`
 };
 
@@ -70,28 +92,16 @@ function createActivityIcon(kind) {
 
 /** @param {BranchQuadrant} [selected] */
 function createBranchPicker(selected) {
-  const wrap = document.createElement('div');
-  wrap.className = 'intro-corporate-activity__branch';
+  const wrap = document.createElement('span');
+  wrap.className =
+    'intro-corporate-activity__branch intro-corporate-activity__icon intro-corporate-activity__icon--decision';
   wrap.setAttribute('role', 'img');
-  wrap.setAttribute('aria-label', 'Path branch choice');
-
-  const ring = document.createElement('div');
-  ring.className = 'intro-corporate-activity__branch-ring';
-
-  for (const quad of ['tl', 'tr', 'bl', 'br']) {
-    const el = document.createElement('span');
-    el.className = `intro-corporate-activity__branch-quad intro-corporate-activity__branch-quad--${quad}`;
-    el.dataset.quad = quad;
-    if (selected === quad) el.classList.add('is-selected');
-    ring.appendChild(el);
+  wrap.setAttribute('aria-label', 'Decision tree');
+  wrap.innerHTML = DECISION_TREE_ICON_SVG;
+  if (selected) {
+    wrap.classList.add('is-resolved');
+    wrap.querySelector(`[data-quad="${selected}"]`)?.classList.add('is-selected');
   }
-
-  const core = document.createElement('span');
-  core.className = 'intro-corporate-activity__branch-core';
-  core.setAttribute('aria-hidden', 'true');
-  ring.appendChild(core);
-
-  wrap.appendChild(ring);
   return wrap;
 }
 
@@ -211,6 +221,15 @@ function normalizeEntry(raw) {
       kind: 'scored',
       score,
       pointsGained: score
+    };
+  }
+
+  if (text.startsWith('Decided to ')) {
+    return {
+      id: raw.id ?? '',
+      at: raw.at ?? Date.now(),
+      kind: 'decision',
+      decision: text.slice(11).trim()
     };
   }
 
@@ -351,7 +370,7 @@ function entryPlainText(item) {
     case 'branch':
       return `Chose ${item.decision ?? ''}`;
     case 'decision':
-      return `Took decision: ${item.decision}`;
+      return `Decided to ${item.decision}`;
     case 'unlocked': {
       const label =
         item.title && item.chapter ? `${item.chapter}: ${item.title}` : item.chapter || item.title || '';
@@ -439,7 +458,7 @@ function buildEntryLine(item) {
       }
       break;
     case 'decision':
-      line.append('Took decision: ');
+      line.append('Decided to ');
       {
         const d = document.createElement('strong');
         d.className = 'intro-corporate-activity__emph';
@@ -485,16 +504,16 @@ function animateBranchPicker(entryId) {
     window.setTimeout(() => {
       picker.classList.remove('is-blinking');
       picker.classList.add('is-resolved');
-      picker.querySelectorAll('.intro-corporate-activity__branch-quad').forEach((q) => {
-        q.classList.toggle('is-selected', q.dataset.quad === quadrant);
+      picker.querySelectorAll('.intro-corporate-activity__tree-node[data-quad]').forEach((node) => {
+        node.classList.toggle('is-selected', node.dataset.quad === quadrant);
       });
       window.setTimeout(resolve, BRANCH_RESOLVE_MS);
     }, BRANCH_BLINK_MS);
   });
 }
 
-/** @param {ActivityEntry} entry */
-function createEntryRow(entry) {
+/** @param {ActivityEntry} entry @param {string | null} [animatingBranchId] */
+function createEntryRow(entry, animatingBranchId = null) {
   const li = document.createElement('li');
   const kind = entry.kind ?? 'played';
   li.className = `intro-corporate-activity__row intro-corporate-activity__row--${kind}`;
@@ -503,7 +522,8 @@ function createEntryRow(entry) {
   if (kind === 'branch') {
     li.classList.add('intro-corporate-activity__row--branch');
     if (entry.quadrant) li.dataset.branchQuadrant = entry.quadrant;
-    li.appendChild(createBranchPicker(entry.quadrant));
+    const showPick = entry.id !== animatingBranchId ? entry.quadrant : undefined;
+    li.appendChild(createBranchPicker(showPick));
   } else {
     const iconKind = kind === 'played' && entry.playMode === 'replayed' ? 'replayed' : kind;
     li.appendChild(createActivityIcon(iconKind));
@@ -524,25 +544,99 @@ function createEntryRow(entry) {
   return li;
 }
 
+function measureLbRowStepPx(leaderboard) {
+  const sample =
+    leaderboard.querySelector('.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--peek)') ??
+    leaderboard.querySelector('.intro-corporate-leaderboard__row');
+  const list = leaderboard.querySelector('.intro-corporate-leaderboard__list');
+  if (!sample) return 28;
+  const rowH = sample.getBoundingClientRect().height;
+  const gap = list ? parseFloat(getComputedStyle(list).rowGap || getComputedStyle(list).gap) || 0 : 0;
+  return rowH + gap;
+}
+
+function clampPx(value, min, max) {
+  return Math.round(Math.max(min, Math.min(max, value)));
+}
+
+/** Height available for the side column inside #viewport. */
+function measureSideColumnHeight(column) {
+  const viewportEl = document.getElementById('viewport');
+  const colTop = column.getBoundingClientRect().top;
+  if (viewportEl) {
+    const vp = viewportEl.getBoundingClientRect();
+    return Math.max(
+      SIDE_COLUMN_MIN_PX,
+      Math.floor(vp.bottom - colTop - SIDE_COLUMN_BOTTOM_PAD_PX)
+    );
+  }
+  const vh = window.visualViewport?.height ?? window.innerHeight;
+  return Math.max(SIDE_COLUMN_MIN_PX, Math.floor(vh - colTop - SIDE_COLUMN_BOTTOM_PAD_PX));
+}
+
 function syncActivityPanelHeight() {
+  const column = document.querySelector('.intro-corporate-leaderboard-column');
   const leaderboard = document.getElementById('intro-corporate-leaderboard');
   const activity = document.getElementById('intro-corporate-activity');
-  if (!leaderboard || !activity || document.documentElement.dataset.skin !== 'corporate') return;
+  const skin = document.documentElement.dataset.skin;
+  if (!column || !leaderboard || !activity || (skin !== 'corporate' && skin !== 'space')) return;
 
-  const height = Math.max(
-    ACTIVITY_MIN_HEIGHT_PX,
-    Math.round(leaderboard.getBoundingClientRect().height * ACTIVITY_HEIGHT_RATIO)
+  const columnH = measureSideColumnHeight(column);
+  column.style.setProperty('--side-column-height', `${columnH}px`);
+  column.style.height = `${columnH}px`;
+  column.style.maxHeight = `${columnH}px`;
+
+  const profileH = clampPx(columnH * PROFILE_VH_SHARE, PROFILE_MIN_PX, PROFILE_MAX_PX);
+  const feedbackH = clampPx(columnH * FEEDBACK_VH_SHARE, FEEDBACK_MIN_PX, FEEDBACK_MAX_PX);
+  column.style.setProperty('--side-profile-height', `${profileH}px`);
+  column.style.setProperty('--side-feedback-height', `${feedbackH}px`);
+
+  const gap = parseFloat(getComputedStyle(column).gap) || 9;
+  const flexSpace = Math.max(0, columnH - profileH - feedbackH - gap * 3);
+  const rowStep = measureLbRowStepPx(leaderboard);
+  const lbMinViewport = Math.round(rowStep * LB_VIEWPORT_MIN_ROWS);
+  const lbMaxViewport = Math.round(rowStep * LB_VIEWPORT_MAX_ROWS);
+
+  const lbHead = leaderboard.querySelector('.intro-corporate-leaderboard__head');
+  const lbMore = leaderboard.querySelector('[data-leaderboard-more]');
+  const lbStyles = getComputedStyle(leaderboard);
+  const lbPadY = parseFloat(lbStyles.paddingTop) + parseFloat(lbStyles.paddingBottom);
+  const lbChrome = (lbHead?.offsetHeight ?? 0) + (lbMore?.offsetHeight ?? 0) + lbPadY;
+
+  let activityH = Math.min(
+    ACTIVITY_MAX_HEIGHT_PX,
+    Math.max(ACTIVITY_MIN_HEIGHT_PX, Math.round(flexSpace * ACTIVITY_FLEX_SHARE))
   );
-  activity.style.setProperty('--activity-panel-height', `${height}px`);
+  let lbPanelH = flexSpace - activityH;
+  const lbNeedMin = lbChrome + lbMinViewport;
+
+  if (lbPanelH < lbNeedMin) {
+    activityH = Math.max(ACTIVITY_MIN_HEIGHT_PX, flexSpace - lbNeedMin);
+    lbPanelH = flexSpace - activityH;
+  }
+
+  const lbViewport = Math.max(lbMinViewport, Math.min(lbMaxViewport, lbPanelH - lbChrome));
+
+  activity.style.setProperty('--activity-panel-height', `${activityH}px`);
+  activity.style.height = `${activityH}px`;
+  activity.style.maxHeight = `${activityH}px`;
+  activity.style.flexBasis = `${activityH}px`;
+  leaderboard.style.setProperty('--leaderboard-viewport-height', `${lbViewport}px`);
+  leaderboard.style.setProperty('--leaderboard-panel-height', `${lbPanelH}px`);
+  leaderboard.style.flexBasis = `${lbPanelH}px`;
+  leaderboard.style.height = `${lbPanelH}px`;
+  leaderboard.style.maxHeight = `${lbPanelH}px`;
 }
 
 function bindActivityPanelHeightSync() {
   if (activityHeightObserver) return;
 
-  const leaderboard = document.getElementById('intro-corporate-leaderboard');
-  if (!leaderboard) return;
+  const column = document.querySelector('.intro-corporate-leaderboard-column');
+  if (!column) return;
 
   syncActivityPanelHeight();
+
+  const viewportEl = document.getElementById('viewport');
 
   if (typeof ResizeObserver === 'undefined') {
     window.addEventListener('resize', syncActivityPanelHeight);
@@ -550,7 +644,8 @@ function bindActivityPanelHeightSync() {
   }
 
   activityHeightObserver = new ResizeObserver(() => syncActivityPanelHeight());
-  activityHeightObserver.observe(leaderboard);
+  activityHeightObserver.observe(column);
+  if (viewportEl) activityHeightObserver.observe(viewportEl);
 }
 
 function scrollActivityToLatest(viewport) {
@@ -562,12 +657,14 @@ function scrollActivityToLatest(viewport) {
   requestAnimationFrame(() => requestAnimationFrame(snap));
 }
 
-function render() {
+/** @param {{ animatingBranchId?: string }} [options] */
+function render(options = {}) {
   const list = document.getElementById('intro-activity-log-list');
   const panel = document.getElementById('intro-corporate-activity');
   if (!list || !panel) return;
 
   const viewport = panel.querySelector('.intro-corporate-activity__viewport');
+  const { animatingBranchId = null } = options;
   list.replaceChildren();
 
   if (!entries.length) {
@@ -580,9 +677,9 @@ function render() {
   }
 
   entries.forEach((entry, index) => {
-    const row = createEntryRow(entry);
+    const row = createEntryRow(entry, animatingBranchId);
     if (index === entries.length - 1) row.dataset.activityAnchor = 'latest';
-    if (entry.kind === 'branch') {
+    if (entry.kind === 'branch' && entry.id !== animatingBranchId) {
       row.querySelector('.intro-corporate-activity__branch')?.classList.add('is-resolved');
       row
         .querySelector(`[data-quad="${entry.quadrant}"]`)
@@ -613,7 +710,7 @@ async function appendActivityBatch(batch, baseAt) {
       entries.push(entry);
       if (entries.length > MAX_STORED) entries = entries.slice(entries.length - MAX_STORED);
       saveEntries();
-      render();
+      render({ animatingBranchId: entry.id });
       await animateBranchPicker(entry.id);
       continue;
     }
@@ -642,7 +739,8 @@ async function appendActivityBatch(batch, baseAt) {
  * @param {{ playMode?: PlayMode }} [options]
  */
 export function recordPlayActivity(mod, outcome, newlyUnlocked = [], options = {}) {
-  if (document.documentElement.dataset.skin !== 'corporate') return;
+  const skin = document.documentElement.dataset.skin;
+  if (skin !== 'corporate' && skin !== 'space') return;
   if (!document.getElementById('intro-activity-log-list')) return;
 
   const baseAt = Date.now();
@@ -658,8 +756,14 @@ export function resetActivityLog() {
 
 let initialized = false;
 
+/** Re-measure side column + card heights from #viewport (call after panel reveal / resize). */
+export function syncIntroSideColumnLayout() {
+  syncActivityPanelHeight();
+}
+
 export function initIntroActivityLog() {
-  if (initialized || document.documentElement.dataset.skin !== 'corporate') return;
+  const skin = document.documentElement.dataset.skin;
+  if (initialized || (skin !== 'corporate' && skin !== 'space')) return;
   initialized = true;
   entries = loadEntries();
   repairMissingScoredEntries();

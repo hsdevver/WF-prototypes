@@ -1,9 +1,17 @@
 import { getChapterCapsLabel } from './consequence-flow.js';
 import { recordPlayActivity } from './intro-activity-log.js';
-import { applyPlayOutcome, getPlayScenario, getRuntimeModule } from './consequence-progress.js';
+import {
+  applyPlayOutcome,
+  getPlayScenario,
+  getRuntimeModule,
+  playModeBeforeOutcome
+} from './consequence-progress.js';
 import { playModuleHoverClick } from './ui-sounds.js';
 
-const CORPORATE_PATH_INSET = 0.05;
+/** Expanded chapter panel — share of #modules (width × height), centered. */
+const CORPORATE_MODULES_PANEL_RATIO = 0.6;
+const CORPORATE_MODULES_PANEL_MIN_W = 320;
+const CORPORATE_MODULES_PANEL_MIN_H = 220;
 
 const modalState = {
   open: false,
@@ -174,11 +182,7 @@ function isCorporateSkin() {
 }
 
 function getCorporatePathHost() {
-  return document.getElementById('intro-path-map');
-}
-
-function getCorporatePathColumns() {
-  return document.getElementById('intro-columns');
+  return document.getElementById('modules');
 }
 
 function rectWithinHost(host, el) {
@@ -192,27 +196,21 @@ function rectWithinHost(host, el) {
   };
 }
 
-function corporatePanelTargetRectFromColumns() {
-  const host = getCorporatePathHost();
-  const columns = getCorporatePathColumns();
-  if (!host || !columns) return null;
-
-  const col = columns.getBoundingClientRect();
-  const hostRect = host.getBoundingClientRect();
-  const padX = col.width * CORPORATE_PATH_INSET;
-  const padY = col.height * CORPORATE_PATH_INSET;
-
-  return {
-    left: col.left - hostRect.left + padX,
-    top: col.top - hostRect.top + padY,
-    width: Math.max(col.width - padX * 2, 120),
-    height: Math.max(col.height - padY * 2, 160)
-  };
-}
-
-/** Expanded chapter panel — inset on #intro-columns (animate from clicked card). */
+/** Expanded chapter panel — ~60% of #modules, centered (path + cards stay visible around it). */
 function corporatePanelTargetRect() {
-  return corporatePanelTargetRectFromColumns();
+  const host = getCorporatePathHost();
+  if (!host) return null;
+
+  const w = host.clientWidth;
+  const h = host.clientHeight;
+  if (w < 1 || h < 1) return null;
+
+  const width = Math.max(CORPORATE_MODULES_PANEL_MIN_W, Math.round(w * CORPORATE_MODULES_PANEL_RATIO));
+  const height = Math.max(CORPORATE_MODULES_PANEL_MIN_H, Math.round(h * CORPORATE_MODULES_PANEL_RATIO));
+  const left = Math.round((w - width) * 0.5);
+  const top = Math.round((h - height) * 0.5);
+
+  return { left, top, width, height };
 }
 
 function applyCorporatePanelFrame(target) {
@@ -383,13 +381,11 @@ function onOutcomePick(outcome) {
   }
 
   const { mod, onProgress } = modalState;
-  const wasPlayed = Boolean(getRuntimeModule(mod.id)?.completed);
-  const newlyUnlocked = applyPlayOutcome(mod.id, outcome);
-  recordPlayActivity(mod, outcome, newlyUnlocked, {
-    playMode: wasPlayed ? 'replayed' : 'live'
-  });
+  const playMode = playModeBeforeOutcome(mod.id);
+  const { newlyUnlocked, starGateBlocked } = applyPlayOutcome(mod.id, outcome);
+  recordPlayActivity(mod, outcome, newlyUnlocked, { playMode });
   closeModuleModal(() => {
-    onProgress?.(newlyUnlocked, mod.id);
+    onProgress?.(newlyUnlocked, mod.id, { starGateBlocked });
   });
 }
 
@@ -531,6 +527,7 @@ export function openModuleModal(mod, sourceCard, options = {}) {
   if (isCorporateSkin() && mountCorporatePathModal()) {
     const originWrap = corporateOriginWrap(sourceCard);
     originWrap?.classList.add('is-modal-origin');
+    originWrap?.classList.remove('intro-module-wrap--next-play');
     runCorporatePathOpen(sourceCard);
   } else {
     modalState.corporatePathLayout = false;
@@ -572,6 +569,9 @@ export function closeModuleModal(afterClose) {
     modalState.onPlugWire = null;
     modalState.corporatePathLayout = false;
     setView('detail');
+    if (typeof window !== 'undefined' && document.getElementById('intro-columns')) {
+      window.dispatchEvent(new CustomEvent('wf-sync-next-play-glow'));
+    }
     done?.();
   };
 

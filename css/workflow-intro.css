@@ -282,18 +282,31 @@ html[data-skin='space'] .intro-corporate-board {
 
 html[data-skin='space'] .intro-corporate-board__backdrop,
 html[data-skin='space'] .intro-corporate-board__hero,
-html[data-skin='space'] .intro-corporate-board__copy,
-html[data-skin='space'] .intro-corporate-leaderboard-panel,
-html[data-skin='space'] .intro-corporate-activity {
+html[data-skin='space'] .intro-corporate-board__copy {
   display: none !important;
 }
 
-html[data-skin='space'] .intro-corporate-board__body,
+html[data-skin='space'] .intro-corporate-board__body {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(1rem, 2vw, 1.75rem);
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: 0 1.5rem 0;
+  box-sizing: border-box;
+}
+
 html[data-skin='space'] .intro-corporate-board__main {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   align-items: center;
   width: 100%;
+  min-width: 0;
   min-height: 0;
   margin: 0;
   padding: 0;
@@ -301,11 +314,20 @@ html[data-skin='space'] .intro-corporate-board__main {
   background: transparent;
 }
 
+html[data-skin='space'] .intro-corporate-leaderboard-panel {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: min(280px, 28vw);
+  margin-top: 0;
+  position: sticky;
+  top: clamp(1rem, 3vh, 2rem);
+}
+
 html[data-skin='space'] .intro-corporate-board__path.intro-modules {
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding: 0;
 }
 
 /* Title sits above path (DOM order is board then h2) */
@@ -315,6 +337,50 @@ html[data-skin='space'] .intro-beat--chapter > .intro-chapter {
 
 html[data-skin='space'] .intro-beat--chapter > .intro-corporate-board {
   order: 0;
+  align-self: stretch;
+  width: 100%;
+}
+
+/* Space — side panel reveal (after chapter settles) */
+html[data-skin='space'] {
+  --corporate-accent: var(--theme-color, #6baed0);
+  --corporate-accent-soft: color-mix(in srgb, var(--theme-color, #6baed0) 24%, transparent);
+  --activity-icon-play: color-mix(in srgb, var(--theme-color, #6baed0) 38%, #ffffff);
+  --activity-icon-score: color-mix(in srgb, var(--theme-color, #6baed0) 58%, #ffffff);
+  --activity-icon-decision: color-mix(in srgb, var(--theme-color, #6baed0) 78%, #ffffff);
+  --activity-icon-unlock: var(--theme-color, #6baed0);
+  --lb-row-gap: 0.35rem;
+  --lb-row-height: 1.75rem;
+  --lb-row-step: calc(var(--lb-row-height) + var(--lb-row-gap));
+}
+
+html[data-skin='space'] .intro-corporate-board.is-pop-pending .intro-corporate-pop-target:not(.intro-module-wrap) {
+  opacity: 0;
+  transform: translate3d(14px, 0, 0) scale(0.98);
+  transition:
+    opacity 0.48s cubic-bezier(0.22, 1, 0.32, 1),
+    transform 0.48s cubic-bezier(0.22, 1, 0.32, 1);
+}
+
+html[data-skin='space'] .intro-corporate-board.is-side-panel-visible .intro-corporate-pop-target:not(.intro-module-wrap),
+html[data-skin='space'] .intro-corporate-pop-target:not(.intro-module-wrap).is-pop-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+@media (max-width: 768px) {
+  html[data-skin='space'] .intro-corporate-board__body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  html[data-skin='space'] .intro-corporate-leaderboard-panel {
+    width: 100%;
+    max-width: 360px;
+    align-self: stretch;
+    margin-inline: auto;
+    position: static;
+  }
 }
 
 .intro-workflow {
@@ -835,6 +901,53 @@ html.is-plug-active .intro-module-wrap.is-revealed {
   z-index: 2;
 }
 
+/* Next chapter to play — outer glow on latest unlock */
+.intro-module-wrap--next-play {
+  z-index: 5;
+}
+
+html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked),
+html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked) {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 58%, #ffffff),
+    0 0 22px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 62%, transparent),
+    0 0 44px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 34%, transparent),
+    0 10px 26px rgba(0, 0, 0, 0.26);
+  animation: intro-module-next-play-glow 2.5s ease-in-out infinite;
+}
+
+@keyframes intro-module-next-play-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 48%, #ffffff),
+      0 0 18px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 52%, transparent),
+      0 0 36px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 26%, transparent),
+      0 10px 26px rgba(0, 0, 0, 0.26);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 72%, #ffffff),
+      0 0 28px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 78%, transparent),
+      0 0 52px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 42%, transparent),
+      0 10px 26px rgba(0, 0, 0, 0.26);
+  }
+}
+
+html.is-module-modal-open[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked),
+html.is-module-modal-open[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked) {
+  animation: none;
+  box-shadow:
+    0 0 2.5px rgba(0, 0, 0, 0.08),
+    0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked),
+  html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked) {
+    animation: none;
+  }
+}
 
 .intro-module-wrap--just-unlocked .module-card {
   animation: intro-module-unlock 0.85s cubic-bezier(0.16, 0.92, 0.18, 1);

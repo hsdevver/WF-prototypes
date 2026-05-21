@@ -1,6 +1,10 @@
 /* Module modal — corporate skin (frosted glass, matches path cards + leaderboard) */
 
-/* Path-anchored chapter modal — grows over #intro-columns, map stays visible */
+/* Path-anchored chapter modal — lives in #modules, panel ~60% of path area */
+html[data-skin='corporate'] .intro-corporate-board__path.intro-modules {
+  position: relative;
+}
+
 html[data-skin='corporate'] .module-modal.module-modal--corporate-path {
   position: absolute;
   inset: 0;
@@ -27,9 +31,14 @@ html[data-skin='corporate'] .module-modal--corporate-path .module-modal__panel {
   opacity: 1;
   filter: none;
   isolation: isolate;
-  background: rgba(14, 18, 26, 0.94);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgb(14, 18, 26);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.48);
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 html[data-skin='corporate'] .module-modal--corporate-path .module-modal__hero {
@@ -51,13 +60,17 @@ html[data-skin='corporate'] .module-modal--corporate-path .module-modal__actions
 
 html[data-skin='corporate'] .intro-module-wrap.is-modal-origin {
   position: relative;
-  z-index: 3;
+  z-index: 0;
+  opacity: 0;
   pointer-events: none;
+  overflow: hidden;
 }
 
-/* Single frame: panel sits on the wrap; hide duplicate card chrome underneath */
+/* Hide source card while modal is open (panel is the only visible frame) */
 html[data-skin='corporate'] .intro-module-wrap.is-modal-origin .module-card {
   visibility: hidden;
+  box-shadow: none;
+  animation: none;
 }
 
 html[data-skin='corporate'] .module-modal__backdrop {
@@ -221,6 +234,8 @@ html[data-skin='corporate'] .module-modal__back:hover {
 }
 
 html[data-skin='corporate'] .module-modal__cta {
+  flex: 1;
+  min-height: 2.5rem;
   border-radius: 12px;
   background: var(--corporate-accent, #c85a42);
   color: #ffffff;
@@ -242,12 +257,8 @@ html[data-skin='corporate'].is-module-modal-open .intro-chapter {
   filter: none;
 }
 
-/* Modal lives inside #intro-path-map — do not blur the host (blurs the dialog too) */
-html[data-skin='corporate'].is-module-modal-open .intro-corporate-board__path .intro-path-map {
-  filter: none;
-}
-
-html[data-skin='corporate'].is-module-modal-open .intro-path-map > .intro-connectors,
-html[data-skin='corporate'].is-module-modal-open .intro-path-map > .intro-path-grid {
-  filter: none;
+/* Modal is a sibling of #intro-path-map inside #modules — dim only the path map */
+html[data-skin='corporate'].is-module-modal-open .intro-corporate-board__path.intro-modules > .intro-path-map {
+  filter: brightness(0.72);
+  transition: filter 0.35s ease;
 }

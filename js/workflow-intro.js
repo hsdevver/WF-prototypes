@@ -1,10 +1,16 @@
 import { wireSecretChapterTrigger } from './cheat-panel.js';
-import { initIntroActivityLog, recordPlayActivity } from './intro-activity-log.js';
+import {
+  initIntroActivityLog,
+  recordPlayActivity,
+  syncIntroSideColumnLayout
+} from './intro-activity-log.js';
 import { initTheme } from './theme.js';
 import { initAmbientMusicSync, initAmbientPlayback } from './ambient-music.js';
 import {
   anchorFromRect,
   applySubwayLaneBundles,
+  applySubwayMidXLanes,
+  sortSubwayCordPaintOrder,
   cordPathD,
   cordPhaseOffset,
   edgeKey,
@@ -18,21 +24,31 @@ import {
 } from './empathy-score.js';
 import {
   CHAPTER_1_END_MODULE_ID,
+  CHAPTER_2_END_MODULE_ID,
   getChapterAriaLabel,
   MODULE_SKILL_FOCUS
 } from './consequence-flow.js';
 import {
   applyPlayOutcome,
   beginChapter2,
+  beginChapter3,
+  wouldBlockStarGateUnlock,
   getChapterCordAnchors,
   getChapterEdges,
   getCurrentChapter,
   getEdgeChoiceLabel,
+  getFilledEdgeKeys,
   getRuntimeModule,
   getRuntimeModules,
+  getCorporateVolumeCheatMode,
   isChapter1Complete,
+  isChapter2Complete,
+  isChapter3HandoffDone,
   isChapterHandoffDone,
-  isEdgeFilled
+  isEdgeFilled,
+  playModeBeforeOutcome,
+  setCatalogChapter,
+  setCorporateVolumeCheatMode
 } from './consequence-progress.js';
 import { initModuleModal, isModuleModalOpen, openModuleModal } from './module-modal.js';
 import {
@@ -54,11 +70,27 @@ const INTRO_MODULE_SCATTER = {
   m5: { x: -7, y: 11, r: -1.6, z: 2 },
   c2m1: { x: -6, y: 5, r: -2.2, z: 2 },
   c2m2: { x: 5, y: -4, r: 2.4, z: 1 },
-  c2m3: { x: 8, y: 6, r: -1.8, z: 0 }
+  c2m3: { x: 8, y: 6, r: -1.8, z: 0 },
+  c3m1: { x: -8, y: 10, r: -2.8, z: 3 },
+  c3m2a: { x: 7, y: -9, r: 2.6, z: 2 },
+  c3m2b: { x: -10, y: 8, r: -2.4, z: 1 },
+  c3m3a: { x: 9, y: -6, r: 2.2, z: 2 },
+  c3m3: { x: -5, y: 4, r: -1.4, z: 1 },
+  c3m3b: { x: 8, y: 7, r: 2.8, z: 0 },
+  c3m4: { x: -6, y: -5, r: -2, z: 2 },
+  c3m5: { x: 5, y: 9, r: 1.6, z: 1 }
 };
 
 function isCorporateSkin() {
   return document.documentElement.dataset.skin === 'corporate';
+}
+
+function isSpaceSkin() {
+  return document.documentElement.dataset.skin === 'space';
+}
+
+function usesIntroSidePanel() {
+  return isCorporateSkin() || isSpaceSkin();
 }
 
 function dissolveCorporatePathStacks() {
@@ -119,6 +151,18 @@ function applyCorporateModuleGridLayout() {
       stack.appendChild(wrap);
     });
   });
+
+  const hasBranching = Boolean(gridEl.querySelector('.intro-path-stack--branch'));
+  const linearCols = byColumn.size;
+  const board = document.getElementById('intro-corporate-board');
+  board?.classList.toggle('is-path-linear', !hasBranching);
+  pathMapEl?.classList.toggle('is-path-linear', !hasBranching);
+  gridEl?.classList.toggle('is-path-linear', !hasBranching);
+  if (!hasBranching && linearCols > 0) {
+    gridEl?.style.setProperty('--path-linear-cols', String(linearCols));
+  } else {
+    gridEl?.style.removeProperty('--path-linear-cols');
+  }
 }
 
 function applyModuleScatter(wrap, moduleId) {
@@ -214,7 +258,9 @@ const introState = {
   plugActive: false,
   plugRaf: 0,
   handoffRunning: false,
-  chapter2SettledAt: null
+  chapter2SettledAt: null,
+  corporateViewVolume: 1,
+  nextPlayModuleId: null
 };
 
 let corporatePopRun = 0;
@@ -234,6 +280,11 @@ const CORPORATE_VOLUME_COPY = {
     title: 'Volume 2: Almost a pro',
     lead:
       'Shorter lane, sharper pacing—three modules in a row. Your choices branch less; the tubes stay lit as you move.'
+  },
+  3: {
+    title: 'Volume 3: Full weave',
+    lead:
+      'Split, merge, and branch in one column—3A and 3B sit with chapter 3, then everything converges before the final gate.'
   }
 };
 
@@ -363,37 +414,149 @@ function focusModuleCard(moduleId) {
   return card;
 }
 
+/** First unlocked, incomplete module to suggest as the next play target. */
+function resolveNextPlayModuleId() {
+  const stored = introState.nextPlayModuleId;
+  if (stored) {
+    const mod = getRuntimeModule(stored);
+    if (mod && !mod.locked && !mod.completed) return stored;
+  }
+
+  const candidates = getRuntimeModules().filter((m) => !m.locked && !m.completed);
+  if (!candidates.length) return null;
+
+  const start = candidates.find((m) => m.start);
+  if (start) return start.id;
+
+  return (
+    candidates.sort((a, b) => b.column - a.column || a.row - b.row || 0)[0]?.id ?? null
+  );
+}
+
+function syncNextPlayModuleGlow() {
+  if (!gridEl) return;
+  gridEl.querySelectorAll('.intro-module-wrap--next-play').forEach((wrap) => {
+    wrap.classList.remove('intro-module-wrap--next-play');
+  });
+
+  const nextId = resolveNextPlayModuleId();
+  if (!nextId) {
+    introState.nextPlayModuleId = null;
+    return;
+  }
+
+  introState.nextPlayModuleId = nextId;
+  gridEl.querySelector(`[data-module-anchor="${nextId}"]`)?.classList.add('intro-module-wrap--next-play');
+}
+
+function setNextPlayModule(moduleId) {
+  if (!moduleId) {
+    introState.nextPlayModuleId = null;
+    syncNextPlayModuleGlow();
+    return;
+  }
+  const mod = getRuntimeModule(moduleId);
+  if (!mod || mod.locked || mod.completed) {
+    introState.nextPlayModuleId = null;
+    syncNextPlayModuleGlow();
+    return;
+  }
+  introState.nextPlayModuleId = moduleId;
+  syncNextPlayModuleGlow();
+}
+
+function refreshNextPlayAfterProgress(playedModuleId, newlyUnlocked = []) {
+  if (newlyUnlocked.length) {
+    setNextPlayModule(newlyUnlocked[newlyUnlocked.length - 1]);
+    return;
+  }
+  const played = getRuntimeModule(playedModuleId);
+  if (played?.completed) introState.nextPlayModuleId = null;
+  syncNextPlayModuleGlow();
+}
+
 function highlightUnlockedModules(moduleIds) {
   for (const id of moduleIds) {
     const wrap = pathMapEl?.querySelector(`[data-module-anchor="${id}"]`);
     wrap?.classList.add('intro-module-wrap--just-unlocked');
     window.setTimeout(() => wrap?.classList.remove('intro-module-wrap--just-unlocked'), 1200);
   }
-  const focusId = moduleIds[0];
-  if (focusId) focusModuleCard(focusId);
+  const focusId = moduleIds[moduleIds.length - 1] ?? moduleIds[0];
+  if (focusId) {
+    setNextPlayModule(focusId);
+    focusModuleCard(focusId);
+  }
 }
 
-function onModuleProgress(unlockedIds, moduleId) {
+let starGatePromptModuleId = null;
+
+function clearModuleStarGatePrompt() {
+  if (!starGatePromptModuleId) return;
+  const wrap = gridEl?.querySelector(`[data-module-anchor="${starGatePromptModuleId}"]`);
+  wrap?.classList.remove('is-star-gate-prompt');
+  wrap?.querySelector('.intro-module-star-gate-tooltip')?.remove();
+  starGatePromptModuleId = null;
+}
+
+function showModuleStarGatePrompt(moduleId) {
+  const wrap = gridEl?.querySelector(`[data-module-anchor="${moduleId}"]`);
+  if (!wrap) return;
+
+  clearModuleStarGatePrompt();
+  starGatePromptModuleId = moduleId;
+  wrap.classList.add('is-star-gate-prompt');
+
+  const tip = document.createElement('div');
+  tip.className = 'intro-module-star-gate-tooltip';
+  tip.setAttribute('role', 'status');
+  tip.textContent = 'Need a higher score to unlock the next chapter';
+  wrap.appendChild(tip);
+
+  window.setTimeout(() => tip.classList.add('is-visible'), 480);
+}
+
+function onModuleProgress(unlockedIds, moduleId, { starGateBlocked = false } = {}) {
   if (!introState.plugActive) {
     patchModulesFromRuntime(unlockedIds);
     queueIntroCordLayout();
   }
   highlightUnlockedModules(unlockedIds);
+  if (!unlockedIds.length) refreshNextPlayAfterProgress(moduleId, unlockedIds);
   refreshLeaderboardPanel();
   syncPlayerProfile();
   startCordFloat();
+
+  if (starGateBlocked) {
+    showModuleStarGatePrompt(moduleId);
+  } else if (moduleId === 'm8' || starGatePromptModuleId === 'm8') {
+    clearModuleStarGatePrompt();
+    patchModulesFromRuntime(unlockedIds);
+    queueIntroCordLayout();
+  }
+
   maybeStartChapterHandoff(moduleId);
 }
 
 function maybeStartChapterHandoff(moduleId) {
-  if (moduleId !== CHAPTER_1_END_MODULE_ID) return;
-  if (!isChapter1Complete() || isChapterHandoffDone() || introState.handoffRunning) return;
-  if (isCorporateSkin()) {
-    window.setTimeout(() => runCorporateChapterHandoff(), 480);
+  if (introState.handoffRunning) return;
+
+  if (moduleId === CHAPTER_1_END_MODULE_ID) {
+    if (!isChapter1Complete() || isChapterHandoffDone()) return;
+    if (isCorporateSkin()) {
+      window.setTimeout(() => runCorporateChapterHandoff(), 480);
+      return;
+    }
+    if (!chapterSection2) return;
+    window.setTimeout(() => runChapterHandoff(), 480);
     return;
   }
-  if (!chapterSection2) return;
-  window.setTimeout(() => runChapterHandoff(), 480);
+
+  if (moduleId === CHAPTER_2_END_MODULE_ID) {
+    if (!isChapter2Complete() || isChapter3HandoffDone()) return;
+    if (isCorporateSkin()) {
+      window.setTimeout(() => runCorporateVolume3Handoff(), 480);
+    }
+  }
 }
 
 function getCorporateNavItem(volume) {
@@ -409,23 +572,254 @@ function updateCorporateVolumeCopy(volume) {
   if (copy?.lead && lead) lead.textContent = copy.lead;
 }
 
-function activateCorporateVolumeNav(volume) {
+const CORPORATE_NAV_LOCK_SVG = `<svg viewBox="0 0 24 24" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" d="M8 11V8a4 4 0 0 1 8 0v3"/><rect fill="currentColor" x="5" y="11" width="14" height="9" rx="2"/></svg>`;
+
+function getAccessibleCorporateVolumes() {
+  const cheat = getCorporateVolumeCheatMode();
+  if (cheat === 'all') return [1, 2, 3];
+  if (cheat === 'locked') return [1];
+
+  const progress = getCurrentChapter();
+  const volumes = [1];
+  if (progress >= 2 || (isChapterHandoffDone() && isChapter1Complete())) volumes.push(2);
+  if (progress >= 3 || (isChapter3HandoffDone() && isChapter2Complete())) volumes.push(3);
+  return volumes;
+}
+
+/** Keep volume nav buttons aligned with progress (DOM can stay unlocked after reset). */
+function syncCorporateVolumeNavLocks() {
+  const cheat = getCorporateVolumeCheatMode();
+  if (cheat === 'all') {
+    for (const v of [1, 2, 3]) activateCorporateVolumeNav(v);
+    return;
+  }
+  if (cheat === 'locked') {
+    lockCorporateVolumeNav(2);
+    lockCorporateVolumeNav(3);
+    return;
+  }
+  lockCorporateVolumeNav(2);
+  lockCorporateVolumeNav(3);
+  const progress = getCurrentChapter();
+  if (progress >= 2 || (isChapterHandoffDone() && isChapter1Complete())) activateCorporateVolumeNav(2);
+  if (progress >= 3 || (isChapter3HandoffDone() && isChapter2Complete())) activateCorporateVolumeNav(3);
+}
+
+function lockCorporateVolumeNav(volume) {
+  const item = getCorporateNavItem(volume);
+  if (!item || volume === 1) return;
+  item.disabled = true;
+  item.classList.add('is-locked');
+  item.removeAttribute('aria-current');
+  item.setAttribute('aria-label', `Volume ${volume} (locked)`);
+  if (!item.querySelector('.intro-corporate-nav__lock')) {
+    const lock = document.createElement('span');
+    lock.className = 'intro-corporate-nav__lock';
+    lock.setAttribute('aria-hidden', 'true');
+    lock.innerHTML = CORPORATE_NAV_LOCK_SVG;
+    item.insertBefore(lock, item.firstChild);
+  }
+}
+
+function applyCorporateVolumeCheatUi() {
+  if (!usesIntroSidePanel()) return;
+
+  syncCorporateVolumeNavLocks();
+
+  const mode = getCorporateVolumeCheatMode();
+  const allowed = getAccessibleCorporateVolumes();
+  if (mode === 'locked') {
+    setCorporateViewVolume(1, { animate: false });
+  } else if (!allowed.includes(getCorporateViewVolume())) {
+    setCorporateViewVolume(allowed[0], { animate: false });
+  }
+
+  document
+    .getElementById('modules')
+    ?.classList.toggle('is-volume-swipeable', allowed.length > 1);
+  syncCorporateVolumeNavActive();
+}
+
+function getCorporateViewVolume() {
+  const allowed = getAccessibleCorporateVolumes();
+  const view = introState.corporateViewVolume ?? getCurrentChapter();
+  return allowed.includes(view) ? view : allowed[0];
+}
+
+function syncCorporateVolumeNavActive() {
   const nav = document.querySelector('.intro-corporate-nav');
+  const view = getCorporateViewVolume();
+  const progress = getCurrentChapter();
   nav?.querySelectorAll('.intro-corporate-nav__item').forEach((btn) => {
     const v = Number(btn.dataset.volume);
     if (!v) return;
-    btn.classList.toggle('is-active', v === volume);
-    btn.classList.toggle('is-complete', v < volume);
-    if (v === volume) btn.setAttribute('aria-current', 'page');
+    btn.classList.toggle('is-active', v === view);
+    btn.classList.toggle(
+      'is-complete',
+      v < progress ||
+        (v === 1 && isChapterHandoffDone()) ||
+        (v === 2 && isChapter3HandoffDone())
+    );
+    if (v === view) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
   });
+}
 
+function setCorporateViewVolume(volume, { animate = true } = {}) {
+  if (!usesIntroSidePanel()) return;
+  const allowed = getAccessibleCorporateVolumes();
+  if (!allowed.includes(volume)) return;
+
+  const prev = getCorporateViewVolume();
+  if (prev === volume) return;
+
+  introState.corporateViewVolume = volume;
+  setCatalogChapter(volume);
+  setActiveChapter(volume);
+  updateCorporateVolumeCopy(volume);
+  syncCorporateVolumeNavActive();
+  clearModulePathHover();
+
+  const modulesEl = document.getElementById('modules');
+  const pathMap = document.getElementById('intro-path-map');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const slideDir = volume > prev ? 1 : -1;
+
+  if (animate && !reduced && modulesEl && pathMap) {
+    modulesEl.classList.add('is-volume-switching');
+    pathMap.classList.add(slideDir > 0 ? 'is-volume-enter-from-right' : 'is-volume-enter-from-left');
+    renderModules();
+    queueIntroCordLayout();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        pathMap.classList.remove('is-volume-enter-from-right', 'is-volume-enter-from-left');
+        window.setTimeout(() => modulesEl.classList.remove('is-volume-switching'), 400);
+      });
+    });
+    return;
+  }
+
+  renderModules();
+  queueIntroCordLayout();
+}
+
+function activateCorporateVolumeNav(volume) {
   const item = getCorporateNavItem(volume);
   if (!item) return;
   item.disabled = false;
   item.classList.remove('is-locked');
   item.setAttribute('aria-label', `Volume ${volume}`);
   item.querySelector('.intro-corporate-nav__lock')?.remove();
+  syncCorporateVolumeNavActive();
+}
+
+const CORPORATE_VOLUME_DRAG_THRESHOLD_PX = 52;
+let corporateVolumeDragBound = false;
+let corporateVolumeDragConsumed = false;
+
+function wireCorporateVolumeNav() {
+  const nav = document.querySelector('.intro-corporate-nav');
+  if (!nav || nav.dataset.volumeNavBound) return;
+  nav.dataset.volumeNavBound = '1';
+
+  nav.addEventListener('click', (e) => {
+    const btn = e.target.closest('.intro-corporate-nav__item');
+    if (!btn || btn.disabled || btn.classList.contains('is-locked')) return;
+    const vol = Number(btn.dataset.volume);
+    if (!vol) return;
+    const allowed = getAccessibleCorporateVolumes();
+    if (!allowed.includes(vol)) return;
+    setCorporateViewVolume(vol);
+  });
+}
+
+function wireCorporateVolumeDrag() {
+  const modulesEl = document.getElementById('modules');
+  if (!modulesEl || corporateVolumeDragBound) return;
+  corporateVolumeDragBound = true;
+
+  let startX = 0;
+  let dragging = false;
+  let pointerId = null;
+
+  const canSwipe = () => usesIntroSidePanel() && getAccessibleCorporateVolumes().length > 1;
+
+  const endDrag = (e) => {
+    if (pointerId != null && e.pointerId !== pointerId) return;
+
+    modulesEl.classList.remove('is-volume-dragging');
+    modulesEl.style.removeProperty('--volume-drag-offset');
+
+    if (dragging) {
+      corporateVolumeDragConsumed = true;
+      const dx = e.clientX - startX;
+      const volumes = getAccessibleCorporateVolumes();
+      const idx = volumes.indexOf(getCorporateViewVolume());
+      if (dx < -CORPORATE_VOLUME_DRAG_THRESHOLD_PX && idx < volumes.length - 1) {
+        setCorporateViewVolume(volumes[idx + 1]);
+      } else if (dx > CORPORATE_VOLUME_DRAG_THRESHOLD_PX && idx > 0) {
+        setCorporateViewVolume(volumes[idx - 1]);
+      }
+    }
+
+    dragging = false;
+    pointerId = null;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerUp);
+  };
+
+  const onPointerMove = (e) => {
+    if (e.pointerId !== pointerId) return;
+    const dx = e.clientX - startX;
+    if (!dragging && Math.abs(dx) > 10) {
+      dragging = true;
+      modulesEl.classList.add('is-volume-dragging');
+      try {
+        modulesEl.setPointerCapture(pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (dragging) {
+      const volumes = getAccessibleCorporateVolumes();
+      const idx = volumes.indexOf(getCorporateViewVolume());
+      let dragDx = dx;
+      if (idx <= 0) dragDx = Math.max(0, dragDx);
+      if (idx >= volumes.length - 1) dragDx = Math.min(0, dragDx);
+      const damped = Math.max(-72, Math.min(72, dragDx * 0.35));
+      modulesEl.style.setProperty('--volume-drag-offset', `${damped}px`);
+    }
+  };
+
+  const onPointerUp = (e) => {
+    endDrag(e);
+  };
+
+  modulesEl.addEventListener(
+    'click',
+    (e) => {
+      if (!corporateVolumeDragConsumed) return;
+      corporateVolumeDragConsumed = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true
+  );
+
+  modulesEl.addEventListener('pointerdown', (e) => {
+    if (!canSwipe() || e.button !== 0) return;
+    if (introState.handoffRunning || introState.plugActive) return;
+
+    corporateVolumeDragConsumed = false;
+    startX = e.clientX;
+    dragging = false;
+    pointerId = e.pointerId;
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp, { once: true });
+    window.addEventListener('pointercancel', onPointerUp, { once: true });
+  });
 }
 
 function finishCorporateHandoffContent() {
@@ -436,6 +830,8 @@ function finishCorporateHandoffContent() {
   vol1Nav?.removeAttribute('aria-current');
 
   beginChapter2();
+  introState.corporateViewVolume = 2;
+  setCatalogChapter(2);
   setActiveChapter(2);
   updateCorporateVolumeCopy(2);
   renderModules();
@@ -522,6 +918,102 @@ async function runCorporateChapterHandoff() {
   document.documentElement.classList.remove('is-corporate-handoff', 'is-intro-handoff');
 }
 
+function finishCorporateVolume3HandoffContent() {
+  const board = document.getElementById('intro-corporate-board');
+  const vol2Nav = getCorporateNavItem(2);
+  vol2Nav?.classList.remove('is-active');
+  vol2Nav?.classList.add('is-complete');
+  vol2Nav?.removeAttribute('aria-current');
+
+  beginChapter3();
+  introState.corporateViewVolume = 3;
+  setCatalogChapter(3);
+  setActiveChapter(3);
+  updateCorporateVolumeCopy(3);
+  renderModules();
+  applyCorporateModuleGridLayout();
+  activateCorporateVolumeNav(3);
+  board?.classList.add('is-pop-complete');
+  gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+    wrap.classList.remove('is-revealed', 'is-pop-visible');
+  });
+}
+
+async function revealCorporateVolume3Modules() {
+  const modules = getRuntimeModules();
+  for (const mod of modules) {
+    const wrap = gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`);
+    if (!wrap) continue;
+    wrap.classList.add('is-revealed', 'is-pop-visible');
+    if (!introState.moduleSoundsPlayed.has(mod.id)) {
+      introState.moduleSoundsPlayed.add(mod.id);
+      playModuleHoverClick({ bypassThrottle: true });
+    }
+    await delayMs(CORPORATE_POP.moduleStaggerMs);
+  }
+}
+
+async function runCorporateVolume3Handoff() {
+  if (!isCorporateSkin() || introState.handoffRunning || isChapter3HandoffDone()) return;
+  introState.handoffRunning = true;
+  clearModulePathHover();
+  document.documentElement.classList.add('is-corporate-handoff', 'is-intro-handoff');
+  stopCordFloat();
+  stopIntroAuto();
+
+  const board = document.getElementById('intro-corporate-board');
+  const body = board?.querySelector('.intro-corporate-board__body');
+  const main = board?.querySelector('.intro-corporate-board__main');
+  const pathMap = document.getElementById('intro-path-map');
+  const connectors = document.getElementById('intro-connectors');
+  const vol3Nav = getCorporateNavItem(3);
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    finishCorporateVolume3HandoffContent();
+    queueIntroCordLayout();
+    startCordFloat();
+    introState.handoffRunning = false;
+    document.documentElement.classList.remove('is-corporate-handoff', 'is-intro-handoff');
+    return;
+  }
+
+  body?.classList.add('is-handoff-active');
+
+  connectors?.classList.add('is-volume-complete-glow');
+  pathMap?.classList.add('is-cord-shine');
+  await delayMs(CORPORATE_HANDOFF.cordShineMs);
+
+  pathMap?.classList.add('is-chapter-path-slam');
+  await delayMs(CORPORATE_HANDOFF.pathSlamMs);
+  pathMap?.classList.remove('is-chapter-path-slam', 'is-cord-shine');
+  connectors?.classList.remove('is-volume-complete-glow');
+
+  if (vol3Nav) {
+    vol3Nav.classList.add('is-nav-unlocking');
+    await delayMs(CORPORATE_HANDOFF.navWiggleMs);
+    vol3Nav.classList.add('is-nav-slamming');
+    await delayMs(CORPORATE_HANDOFF.navSlamMs);
+    activateCorporateVolumeNav(3);
+    vol3Nav.classList.remove('is-nav-unlocking', 'is-nav-slamming');
+  }
+
+  main?.classList.add('is-main-exiting');
+  await delayMs(CORPORATE_HANDOFF.mainExitMs);
+
+  finishCorporateVolume3HandoffContent();
+  main?.classList.remove('is-main-exiting');
+  main?.classList.add('is-main-entering');
+  await revealCorporateVolume3Modules();
+  await delayMs(CORPORATE_HANDOFF.mainEnterMs);
+  main?.classList.remove('is-main-entering');
+
+  body?.classList.remove('is-handoff-active');
+  queueIntroCordLayout();
+  startCordFloat();
+  introState.handoffRunning = false;
+  document.documentElement.classList.remove('is-corporate-handoff', 'is-intro-handoff');
+}
+
 function bootstrapCorporateChapter2View() {
   const board = document.getElementById('intro-corporate-board');
   if (!board || !gridEl) return;
@@ -532,6 +1024,21 @@ function bootstrapCorporateChapter2View() {
     gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`)?.classList.add('is-revealed', 'is-pop-visible');
   });
   board.classList.add('is-pop-complete');
+  startCordFloat();
+  queueIntroCordLayout();
+}
+
+function bootstrapCorporateChapter3View() {
+  const board = document.getElementById('intro-corporate-board');
+  if (!board || !gridEl) return;
+  introState.complete = true;
+  viewport?.classList.add('is-chapter-settled', 'is-modules-visible');
+  finishCorporateVolume3HandoffContent();
+  getRuntimeModules().forEach((mod) => {
+    gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`)?.classList.add('is-revealed', 'is-pop-visible');
+  });
+  board.classList.add('is-pop-complete');
+  applyCorporateVolumeCheatUi();
   startCordFloat();
   queueIntroCordLayout();
 }
@@ -714,6 +1221,7 @@ function patchModulesFromRuntime(unlockedIds = []) {
 
     if (getModuleLayout() === 'folder') refreshFolderChrome(card, mod);
   }
+  syncNextPlayModuleGlow();
 }
 
 function renderModules() {
@@ -729,7 +1237,7 @@ function renderModules() {
     wrap.style.setProperty('--reveal-index', String(index));
     applyModuleScatter(wrap, mod.id);
     if (mod.start) wrap.classList.add('intro-module-wrap--start');
-    if (mod.id === 'm5') wrap.classList.add('intro-module-wrap--hub');
+    if (mod.id === 'm5' || mod.id === 'c3m5') wrap.classList.add('intro-module-wrap--hub');
 
     const card = document.createElement('button');
     card.type = 'button';
@@ -782,10 +1290,11 @@ function renderModules() {
           ? revealedModuleCount(introState.progress) >= 1
           : wrap?.classList.contains('is-revealed') || !runtime.locked;
       if (!canOpen) return;
+      if (runtime.id === 'm8') clearModuleStarGatePrompt();
       focusModuleCard(runtime.id);
       openModuleModal(runtime, card, {
         imageUrl: imageUrlFor(runtime),
-        onProgress: (unlockedIds, moduleId) => onModuleProgress(unlockedIds, moduleId),
+        onProgress: (unlockedIds, moduleId, detail) => onModuleProgress(unlockedIds, moduleId, detail),
         onPlugWire: (sourceMod, outcome, sourceCardEl) =>
           animatePlugWire(sourceMod, outcome, sourceCardEl)
       });
@@ -797,7 +1306,7 @@ function renderModules() {
   });
 
   wireModulePathHoverMap();
-  if (isCorporateSkin()) syncPlayerProfile();
+  if (usesIntroSidePanel()) syncPlayerProfile();
 
   if (isCorporateSkin()) {
     applyCorporateModuleGridLayout();
@@ -808,6 +1317,7 @@ function renderModules() {
     });
   }
 
+  syncNextPlayModuleGlow();
   queueIntroCordLayout();
 }
 
@@ -868,11 +1378,17 @@ const STARCLUB_PEER_NAMES = [
   'L. Bergström'
 ];
 
+/** Visible row slots in the leaderboard viewport (matches CSS 7.5 × --lb-row-step). */
+const LB_VIEWPORT_ROWS = 7.5;
+
 const LEADERBOARD_SCOPES = {
   department: {
     label: 'Department',
     aria: 'Department leaderboard',
     more: '287 players below',
+    totalPlayers: 295,
+    playersAbove: 5,
+    playersBelow: 287,
     rows: [
       { rank: 2, name: 'Jamie Kim', pts: '2,920', peek: true },
       { rank: 3, name: 'Elena Voss', pts: '2,840' },
@@ -888,6 +1404,9 @@ const LEADERBOARD_SCOPES = {
     label: 'Company',
     aria: 'Company-wide leaderboard',
     more: '1,312 players below',
+    totalPlayers: 1456,
+    playersAbove: 140,
+    playersBelow: 1312,
     rows: [
       { rank: 136, name: 'N. Okonkwo', pts: '6,240', peek: true },
       { rank: 137, name: 'M. Laurent', pts: '5,180' },
@@ -1038,10 +1557,18 @@ function buildStarclubLeaderboard() {
   const clubSize = 18 + stars * 7;
   const starLabel = stars === 1 ? '1 star' : `${stars} stars`;
 
+  const youRank = youIdx + 1;
+  const playersAbove = youRank - 1;
+  const playersBelow = Math.max(0, clubSize - youRank);
+
   return {
     label: `Star club · ${starLabel}`,
     aria: `Star club — players with ${starLabel} collected`,
     more: `${clubSize} players at ${stars} stars`,
+    totalPlayers: clubSize,
+    playersAbove,
+    playersBelow,
+    youRank,
     rows
   };
 }
@@ -1087,6 +1614,53 @@ function renderLeaderboardRows(listEl, scope) {
   listEl.replaceChildren(...data.rows.map((row, index) => buildLeaderboardRow(row, index)));
 }
 
+/**
+ * Pin the visible window: top when very short, centered peek when surrounded, bottom when near list end.
+ * @param {{ rows: object[], playersAbove?: number, playersBelow?: number, totalPlayers?: number }} data
+ */
+function resolveLeaderboardAlign(data) {
+  const rows = data?.rows ?? [];
+  const rowCount = rows.length;
+  if (rowCount <= 3) return 'top';
+
+  const youIdx = rows.findIndex((row) => row.you);
+  const above = data.playersAbove ?? 0;
+  const below = data.playersBelow ?? 0;
+
+  if (rowCount >= LB_VIEWPORT_ROWS - 0.25 && above > 1 && below > 1) {
+    return 'center';
+  }
+
+  if (rowCount < LB_VIEWPORT_ROWS) {
+    const nearListBottom = below <= Math.max(2, Math.ceil(LB_VIEWPORT_ROWS / 2));
+    const youLowInWindow = youIdx >= 0 && youIdx >= rowCount - 2;
+    if (nearListBottom || (youLowInWindow && below <= above)) return 'bottom';
+    if (above <= 1 || youIdx <= 1) return 'top';
+  }
+
+  return 'center';
+}
+
+function applyLeaderboardListAlign(panel, scope) {
+  const listEl = panel?.querySelector('.intro-corporate-leaderboard__list');
+  const data = leaderboardScopeData(scope);
+  if (!listEl || !data) return;
+
+  const align = resolveLeaderboardAlign(data);
+  const rowCount = data.rows.length;
+  let marginTop = 'calc(var(--lb-row-step) * -0.5)';
+
+  if (align === 'top') {
+    marginTop = '0px';
+  } else if (align === 'bottom' && rowCount < LB_VIEWPORT_ROWS) {
+    const slack = LB_VIEWPORT_ROWS - rowCount;
+    marginTop = `calc(var(--lb-row-step) * ${slack})`;
+  }
+
+  listEl.style.setProperty('--lb-list-margin-top', marginTop);
+  listEl.dataset.lbAlign = align;
+}
+
 function refreshLeaderboardPanel() {
   const panel = document.getElementById('intro-corporate-leaderboard');
   const scope = panel?.dataset.leaderboardScope || 'department';
@@ -1094,6 +1668,7 @@ function refreshLeaderboardPanel() {
   if (!panel || !listEl || !LEADERBOARD_SCOPE_ORDER[scope]) return;
   renderLeaderboardRows(listEl, scope);
   applyLeaderboardScopeMeta(panel, scope);
+  applyLeaderboardListAlign(panel, scope);
 }
 
 function applyLeaderboardScopeMeta(panel, scope) {
@@ -1134,6 +1709,7 @@ async function setLeaderboardScope(panel, scope, { animate = true } = {}) {
 
   renderLeaderboardRows(listEl, scope);
   applyLeaderboardScopeMeta(panel, scope);
+  applyLeaderboardListAlign(panel, scope);
 
   if (animate && !reduced) {
     listEl.classList.add(goingDown ? 'is-escalator-enter-down' : 'is-escalator-enter-up');
@@ -1178,15 +1754,17 @@ function wireLeaderboardScopes() {
 function tagCorporatePopTargets() {
   const board = document.getElementById('intro-corporate-board');
   if (!board) return;
-  board.querySelector('.intro-corporate-nav')?.classList.add('intro-corporate-pop-target');
-  board.querySelector('.intro-corporate-board__copy')?.classList.add('intro-corporate-pop-target');
+  if (isCorporateSkin()) {
+    board.querySelector('.intro-corporate-nav')?.classList.add('intro-corporate-pop-target');
+    board.querySelector('.intro-corporate-board__copy')?.classList.add('intro-corporate-pop-target');
+    gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+      wrap.classList.add('intro-corporate-pop-target');
+    });
+  }
   board.querySelector('.intro-corporate-player-profile')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-feedback')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-leaderboard-panel')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-activity')?.classList.add('intro-corporate-pop-target');
-  gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
-    wrap.classList.add('intro-corporate-pop-target');
-  });
 }
 
 function resetCorporatePop() {
@@ -1228,6 +1806,7 @@ function revealCorporateBoard() {
   wireSecretChapterTrigger();
   startCordFloat();
   queueIntroCordLayout();
+  requestAnimationFrame(() => requestAnimationFrame(syncIntroSideColumnLayout));
 }
 
 function finishCorporatePop() {
@@ -1344,9 +1923,20 @@ function refreshCordSegmentEndpoints(seg) {
   seg.anchorOpts = anchorOpts;
 }
 
+function reorderSubwayCordGroups() {
+  if (!connectorsEl || !isCorporateSkin()) return;
+  for (const seg of cordRopeSegments) {
+    const group = connectorsEl.querySelector(`.intro-cord[data-edge="${seg.key}"]`);
+    if (group) connectorsEl.appendChild(group);
+  }
+}
+
 function refreshSubwayCordGeometry() {
   for (const seg of cordRopeSegments) refreshCordSegmentEndpoints(seg);
   applySubwayLaneBundles(cordRopeSegments);
+  applySubwayMidXLanes(cordRopeSegments);
+  sortSubwayCordPaintOrder(cordRopeSegments);
+  reorderSubwayCordGroups();
 }
 
 function findCordSegment(edgeKeyStr) {
@@ -1365,6 +1955,25 @@ function clearPlugState() {
   syncPlugActiveClass();
 }
 
+function completeModulePlay(sourceMod, outcome, sourceCard, targetId) {
+  const runtimeBefore = getRuntimeModule(sourceMod.id) ?? sourceMod;
+  const playMode = playModeBeforeOutcome(sourceMod.id);
+  const { newlyUnlocked, starGateBlocked } = applyPlayOutcome(sourceMod.id, outcome);
+  recordPlayActivity(runtimeBefore, outcome, newlyUnlocked, { playMode });
+  patchModulesFromRuntime(newlyUnlocked);
+  highlightUnlockedModules(newlyUnlocked);
+  onModuleProgress(newlyUnlocked, sourceMod.id, { starGateBlocked });
+
+  if (starGateBlocked) {
+    sourceCard?.classList.remove('is-plug-source');
+    focusModuleCard(sourceMod.id);
+    return;
+  }
+
+  if (targetId) focusModuleCard(targetId);
+  sourceCard?.classList.remove('is-plug-source');
+}
+
 function animatePlugWire(sourceMod, outcome, sourceCard) {
   const edgeKeyStr = outcome.fills?.[0];
   const targetId = outcome.unlocks?.[0];
@@ -1375,6 +1984,16 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   stopIntroAuto();
+
+  if (wouldBlockStarGateUnlock(sourceMod.id, outcome)) {
+    sourceCard?.classList.remove('is-plug-source');
+    targetWrap?.classList.remove('is-plug-target');
+    clearPlugState();
+    completeModulePlay(sourceMod, outcome, sourceCard, targetId);
+    queueIntroCordLayout();
+    return;
+  }
+
   introState.plugActive = true;
   syncPlugActiveClass();
 
@@ -1391,24 +2010,13 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
     stopPlugAnimation();
     clearTimeout(safetyTimer);
 
-    sourceCard?.classList.remove('is-plug-source');
     targetWrap?.classList.remove('is-plug-target');
     hideCordTooltip();
 
-    const runtimeBefore = getRuntimeModule(sourceMod.id) ?? sourceMod;
-    const wasPlayed = Boolean(runtimeBefore.completed);
-    const newlyUnlocked = applyPlayOutcome(sourceMod.id, outcome);
-    recordPlayActivity(runtimeBefore, outcome, newlyUnlocked, {
-      playMode: wasPlayed ? 'replayed' : 'live'
-    });
-    patchModulesFromRuntime(newlyUnlocked);
-    highlightUnlockedModules(newlyUnlocked);
-    focusModuleCard(targetId);
+    completeModulePlay(sourceMod, outcome, sourceCard, targetId);
 
     clearPlugState();
     queueIntroCordLayout();
-
-    maybeStartChapterHandoff(sourceMod.id);
   };
 
   const runPlugAnimation = () => {
@@ -1533,6 +2141,7 @@ let cordFloatPhase = 0;
 let cordTooltipEl = null;
 let cordTooltipHideTimer = 0;
 let modulePathHoverId = null;
+let modulePathHoverIncomingKey = null;
 let modulePathHoverClearTimer = 0;
 const pathHoverTooltips = new Map();
 
@@ -1571,21 +2180,63 @@ function hideCordTooltip() {
   }, 200);
 }
 
-/** All edge keys on routes that lead into `moduleId` (walk backward through the graph). */
-function getEdgesLeadingTo(moduleId) {
+/** Incoming cords to a module (top → bottom on the target card edge). */
+function getIncomingEdgesTo(moduleId) {
+  const anchors = getChapterCordAnchors();
+  const list = [];
+  for (const [fromId, toId] of getChapterEdges()) {
+    if (toId !== moduleId) continue;
+    if (!isCordEdgeVisible(fromId, toId)) continue;
+    const key = edgeKey(fromId, toId);
+    const anchor = anchors[key] ?? {};
+    list.push({
+      key,
+      fromId,
+      toAlong: anchor.toAlong ?? 0.5
+    });
+  }
+  list.sort((a, b) => a.toAlong - b.toAlong);
+  return list;
+}
+
+function pickIncomingEdgeByPointer(wrap, incoming, clientY) {
+  if (!incoming.length) return null;
+  if (incoming.length === 1) return incoming[0].key;
+  const card = wrap.querySelector('.module-card') ?? wrap;
+  const rect = card.getBoundingClientRect();
+  if (rect.height < 1) return incoming[0].key;
+  const t = Math.max(0, Math.min(0.999, (clientY - rect.top) / rect.height));
+  const idx = Math.min(incoming.length - 1, Math.floor(t * incoming.length));
+  return incoming[idx].key;
+}
+
+/** Filled upstream path for one incoming branch into `moduleId`. */
+function getFilledEdgesForIncoming(incomingKey) {
+  const [fromId] = incomingKey.split('|');
+  const keys = new Set();
+  if (isEdgeFilled(incomingKey)) keys.add(incomingKey);
+  for (const k of getFilledEdgesLeadingTo(fromId)) keys.add(k);
+  return keys;
+}
+
+/** Filled edge keys on the path the player actually took into `moduleId`. */
+function getFilledEdgesLeadingTo(moduleId) {
   const keys = new Set();
   const byTarget = new Map();
-  for (const [from, to] of getChapterEdges()) {
+
+  for (const key of getFilledEdgeKeys()) {
+    const [from, to] = key.split('|');
+    if (!from || !to) continue;
     if (!byTarget.has(to)) byTarget.set(to, []);
-    byTarget.get(to).push(from);
+    byTarget.get(to).push({ from, key });
   }
 
   const queue = [moduleId];
   const seen = new Set([moduleId]);
   while (queue.length) {
     const to = queue.shift();
-    for (const from of byTarget.get(to) ?? []) {
-      keys.add(edgeKey(from, to));
+    for (const { from, key } of byTarget.get(to) ?? []) {
+      keys.add(key);
       if (!seen.has(from)) {
         seen.add(from);
         queue.push(from);
@@ -1664,16 +2315,24 @@ function clearModulePathHover() {
   clearTimeout(modulePathHoverClearTimer);
   modulePathHoverClearTimer = 0;
   modulePathHoverId = null;
+  modulePathHoverIncomingKey = null;
   pathMapEl?.classList.remove('is-module-path-hover');
   pathMapEl?.removeAttribute('data-path-hover-module');
+  pathMapEl?.removeAttribute('data-path-hover-edge');
   connectorsEl?.querySelectorAll('.intro-cord.is-path-highlight').forEach((cord) => {
     cord.classList.remove('is-path-highlight');
   });
   hidePathHoverTooltips();
 }
 
-function setModulePathHover(moduleId) {
+function setModulePathHover(moduleId, { incomingEdgeKey = null, clientY = null } = {}) {
   if (!moduleId || introState.plugActive || introState.pluggingEdge || introState.handoffRunning) {
+    clearModulePathHover();
+    return;
+  }
+
+  const mod = moduleById(moduleId);
+  if (!mod || mod.locked) {
     clearModulePathHover();
     return;
   }
@@ -1681,19 +2340,52 @@ function setModulePathHover(moduleId) {
   clearTimeout(modulePathHoverClearTimer);
   modulePathHoverClearTimer = 0;
 
-  if (modulePathHoverId === moduleId) return;
-  modulePathHoverId = moduleId;
+  const wrap = pathMapEl?.querySelector(`[data-module-anchor="${moduleId}"]`);
+  const incoming = getIncomingEdgesTo(moduleId);
+  const multiIngress = incoming.length > 1;
+  let selectedKey = incomingEdgeKey;
+  if (multiIngress && !selectedKey && wrap && clientY != null) {
+    selectedKey = pickIncomingEdgeByPointer(wrap, incoming, clientY);
+  }
+  if (multiIngress && !selectedKey && wrap) {
+    selectedKey = pickIncomingEdgeByPointer(wrap, incoming, wrap.getBoundingClientRect().top + 1);
+  }
 
-  const edgeKeys = getEdgesLeadingTo(moduleId);
+  if (
+    modulePathHoverId === moduleId &&
+    modulePathHoverIncomingKey === (multiIngress ? selectedKey : null)
+  ) {
+    return;
+  }
+
+  modulePathHoverId = moduleId;
+  modulePathHoverIncomingKey = multiIngress ? selectedKey : null;
+
+  const edgeKeys = multiIngress && selectedKey
+    ? getFilledEdgesForIncoming(selectedKey)
+    : getFilledEdgesLeadingTo(moduleId);
+
   pathMapEl?.classList.add('is-module-path-hover');
   pathMapEl?.setAttribute('data-path-hover-module', moduleId);
+  if (selectedKey) pathMapEl?.setAttribute('data-path-hover-edge', selectedKey);
+  else pathMapEl?.removeAttribute('data-path-hover-edge');
 
   connectorsEl?.querySelectorAll('.intro-cord').forEach((cord) => {
     const key = cord.dataset.edge;
-    cord.classList.toggle('is-path-highlight', edgeKeys.has(key));
+    let highlight = false;
+    if (multiIngress && selectedKey) {
+      highlight =
+        key === selectedKey ||
+        (edgeKeys.has(key) && cord.classList.contains('is-filled'));
+    } else {
+      highlight = edgeKeys.has(key) && cord.classList.contains('is-filled');
+    }
+    cord.classList.toggle('is-path-highlight', highlight);
   });
 
-  showPathHoverTooltipsForEdges(edgeKeys);
+  const tooltipKeys = new Set(edgeKeys);
+  if (multiIngress && selectedKey) tooltipKeys.add(selectedKey);
+  showPathHoverTooltipsForEdges(tooltipKeys);
 }
 
 function scheduleClearModulePathHover() {
@@ -1705,16 +2397,26 @@ function scheduleClearModulePathHover() {
 }
 
 function bindModulePathHover(wrap, moduleId) {
-  const onEnter = () => setModulePathHover(moduleId);
+  const incoming = getIncomingEdgesTo(moduleId);
+  const multiIngress = incoming.length > 1;
+
+  const onPointer = (e) => {
+    if (multiIngress) {
+      setModulePathHover(moduleId, { clientY: e.clientY });
+    } else {
+      setModulePathHover(moduleId);
+    }
+  };
   const onLeave = (e) => {
     const related = e.relatedTarget;
     if (related && (wrap.contains(related) || pathMapEl?.contains(related))) return;
     scheduleClearModulePathHover();
   };
 
-  wrap.addEventListener('mouseenter', onEnter);
+  wrap.addEventListener('mouseenter', onPointer);
+  wrap.addEventListener('mousemove', onPointer);
   wrap.addEventListener('mouseleave', onLeave);
-  wrap.addEventListener('focusin', onEnter);
+  wrap.addEventListener('focusin', onPointer);
   wrap.addEventListener('focusout', onLeave);
 }
 
@@ -2018,6 +2720,8 @@ function measureIntroCords({ onReady } = {}) {
   }
 
   applySubwayLaneBundles(cordRopeSegments);
+  applySubwayMidXLanes(cordRopeSegments);
+  sortSubwayCordPaintOrder(cordRopeSegments);
 
   const w = Math.max(pathMapEl.offsetWidth, mapRect.width);
   const h = Math.max(pathMapEl.offsetHeight, mapRect.height);
@@ -2115,7 +2819,11 @@ function measureIntroCords({ onReady } = {}) {
       }
     }
     if (!introState.pluggingEdge) startCordFloat();
-    if (modulePathHoverId) setModulePathHover(modulePathHoverId);
+    if (modulePathHoverId) {
+      setModulePathHover(modulePathHoverId, {
+        incomingEdgeKey: modulePathHoverIncomingKey ?? undefined
+      });
+    }
     onReady?.();
   });
 }
@@ -2451,6 +3159,8 @@ function applyIntroProgress(raw, { immediate = false } = {}) {
     stopCordFloat();
   }
 
+  updateSpaceSidePanelReveal(p);
+
   if (p >= 1 && !introState.complete) finishIntro();
 }
 
@@ -2464,6 +3174,7 @@ function finishIntro() {
     gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`)?.classList.add('is-revealed');
   });
   applyIntroProgress(1, { immediate: true });
+  if (isSpaceSkin()) revealSpaceSidePanel();
   document.documentElement.classList.remove('is-intro-scrubbing');
 }
 
@@ -2498,13 +3209,58 @@ function onIntroWheel(e) {
   applyIntroProgress(introState.progress + delta * introCfg().wheelStep, { immediate: true });
 }
 
+function resetSpaceSidePanel() {
+  const board = document.getElementById('intro-corporate-board');
+  if (!board || !isSpaceSkin()) return;
+  board.classList.add('is-pop-pending');
+  board.classList.remove('is-side-panel-visible', 'is-pop-complete');
+  board.querySelectorAll('.intro-corporate-pop-target:not(.intro-module-wrap)').forEach((el) => {
+    el.classList.remove('is-pop-visible');
+  });
+}
+
+function revealSpaceSidePanel() {
+  const board = document.getElementById('intro-corporate-board');
+  if (!board || !isSpaceSkin()) return;
+  tagCorporatePopTargets();
+  board.classList.remove('is-pop-pending');
+  board.classList.add('is-side-panel-visible', 'is-pop-complete');
+  board.querySelectorAll('.intro-corporate-pop-target:not(.intro-module-wrap)').forEach((el) => {
+    el.classList.add('is-pop-visible');
+  });
+  syncPlayerProfile();
+  requestAnimationFrame(() => requestAnimationFrame(syncIntroSideColumnLayout));
+}
+
+function updateSpaceSidePanelReveal(p) {
+  if (!isSpaceSkin()) return;
+  const board = document.getElementById('intro-corporate-board');
+  if (!board) return;
+  if (p < introCfg().dollyEnd) {
+    resetSpaceSidePanel();
+    return;
+  }
+  if (!board.classList.contains('is-side-panel-visible')) revealSpaceSidePanel();
+}
+
 function syncCorporateIntroClass() {
   document.documentElement.classList.toggle('is-corporate-intro', isCorporateSkin());
+  if (!usesIntroSidePanel()) return;
+  wireLeaderboardScopes();
+  initIntroActivityLog();
+  syncPlayerProfile();
   if (isCorporateSkin()) {
-    wireLeaderboardScopes();
-    initIntroActivityLog();
     patchModulesFromRuntime();
     wireSecretChapterTrigger();
+  } else {
+    setCatalogChapter(null);
+  }
+  wireCorporateVolumeNav();
+  wireCorporateVolumeDrag();
+  applyCorporateVolumeCheatUi();
+  if (isSpaceSkin()) {
+    resetSpaceSidePanel();
+    tagCorporatePopTargets();
   }
 }
 
@@ -2542,7 +3298,7 @@ buildStarfield();
 initModuleModal();
 wireModulePathHoverMap();
 renderModules();
-if (isCorporateSkin()) syncPlayerProfile();
+if (usesIntroSidePanel()) syncPlayerProfile();
 syncCorporateIntroClass();
 initAmbientMusicSync();
 initAmbientPlayback();
@@ -2567,6 +3323,14 @@ window.addEventListener('wf-theme-change', () => {
   resetCorporatePop();
   viewport?.classList.remove('is-corporate-board');
 
+  if (isSpaceSkin()) {
+    resetSpaceSidePanel();
+    tagCorporatePopTargets();
+    if (introState.complete || introState.progress >= introCfg().dollyEnd) {
+      revealSpaceSidePanel();
+    }
+  }
+
   if (!introState.complete) {
     applyIntroProgress(introState.progress, { immediate: true });
   } else {
@@ -2579,13 +3343,24 @@ window.addEventListener('wf-module-layout-change', () => {
   queueIntroCordLayout();
 });
 
+window.addEventListener('wf-corporate-volumes-cheat', () => {
+  applyCorporateVolumeCheatUi();
+});
+
+window.addEventListener('wf-sync-next-play-glow', () => {
+  syncNextPlayModuleGlow();
+});
+
 window.addEventListener('wf-progress-change', (event) => {
   if (event.detail?.reset) {
-    if (getCurrentChapter() === 2 || isChapterHandoffDone()) {
+    if (getCurrentChapter() >= 2 || isChapterHandoffDone()) {
       window.location.reload();
       return;
     }
+    introState.corporateViewVolume = 1;
+    setCatalogChapter(null);
     setActiveChapter(1);
+    if (usesIntroSidePanel()) applyCorporateVolumeCheatUi();
     renderModules();
     if (isCorporateSkin()) revealCorporateBoard();
     else queueIntroCordLayout();
@@ -2593,7 +3368,11 @@ window.addEventListener('wf-progress-change', (event) => {
   }
   if (event.detail?.unlockAll) {
     const unlocked = getRuntimeModules().filter((m) => !m.locked).map((m) => m.id);
-    if (getCurrentChapter() === 1 && isCorporateSkin()) revealCorporateBoard();
+    if (usesIntroSidePanel()) {
+      setCorporateVolumeCheatMode('all');
+      applyCorporateVolumeCheatUi();
+      if (isCorporateSkin() && getCurrentChapter() === 1) revealCorporateBoard();
+    }
     patchModulesFromRuntime(unlocked);
     syncPlayerProfile();
     queueIntroCordLayout();
@@ -2602,6 +3381,7 @@ window.addEventListener('wf-progress-change', (event) => {
   patchModulesFromRuntime(event.detail?.newlyUnlocked ?? []);
   refreshLeaderboardPanel();
   syncPlayerProfile();
+  if (usesIntroSidePanel()) applyCorporateVolumeCheatUi();
   queueIntroCordLayout();
 });
 
@@ -2627,7 +3407,9 @@ if (pathMapEl && typeof ResizeObserver !== 'undefined') {
 
 initIntroScrollControl();
 
-if (getCurrentChapter() === 2 && isChapterHandoffDone()) {
+if (getCurrentChapter() === 3 && isChapter3HandoffDone()) {
+  if (isCorporateSkin()) bootstrapCorporateChapter3View();
+} else if (getCurrentChapter() === 2 && isChapterHandoffDone()) {
   if (isCorporateSkin()) bootstrapCorporateChapter2View();
   else bootstrapChapter2View();
 } else {

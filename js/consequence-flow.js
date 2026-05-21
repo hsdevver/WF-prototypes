@@ -261,6 +261,11 @@ export const MODULE_PLAY_SCENARIOS = {
 /** Chapter 1 is complete when the end cap module has been played. */
 export const CHAPTER_1_END_MODULE_ID = 'm5';
 
+/** Min stars on a module before its downstream unlocks / fills apply (prototype: m8 → m5). */
+export const MODULE_STAR_UNLOCK_GATES = {
+  m8: { minStars: 4, unlocks: ['m5'], fills: ['m8|m5'] }
+};
+
 /** Shorter linear path — Chapter 2: Almost a pro */
 export const CHAPTER_2_MODULES = [
   {
@@ -363,6 +368,292 @@ export const CHAPTER_2_PLAY_SCENARIOS = {
   }
 };
 
+/**
+ * Volume 3 — split → merge → branch column (3A / 3 / 3B) → converge → finish.
+ * 3A and 3B share column 3 with chapter 3 (not column 4).
+ */
+export const CHAPTER_3_MODULES = [
+  {
+    id: 'c3m1',
+    column: 1,
+    row: 2,
+    start: true,
+    chapter: '1',
+    title: 'Opening move',
+    description: 'Entry point — your choice splits the path up and down.',
+    progress: 100,
+    locked: false,
+    hue: 210,
+    modal: { badge: 'INTRO', cta: 'Play module', showStats: false }
+  },
+  {
+    id: 'c3m2a',
+    column: 2,
+    row: 1,
+    chapter: '2A',
+    title: 'Upper split',
+    description: 'Strong lane — can feed the upper branch or merge early.',
+    progress: 0,
+    locked: true,
+    hue: 206,
+    modal: { badge: 'PRACTICE', cta: 'Play module', showStats: true }
+  },
+  {
+    id: 'c3m2b',
+    column: 2,
+    row: 3,
+    chapter: '2B',
+    title: 'Lower split',
+    description: 'Reinforcement lane — same fork, different consequence.',
+    progress: 0,
+    locked: true,
+    hue: 202,
+    modal: { badge: 'PRACTICE', cta: 'Play module', showStats: true }
+  },
+  {
+    id: 'c3m3a',
+    column: 3,
+    row: 1,
+    chapter: '3A',
+    title: 'Upper branch',
+    description: 'Paired with chapter 3 — carries the top lane forward.',
+    progress: 0,
+    locked: true,
+    hue: 198,
+    modal: { badge: 'PRACTICE', cta: 'Play module', showStats: true }
+  },
+  {
+    id: 'c3m3',
+    column: 3,
+    row: 2,
+    chapter: '3',
+    title: 'Merge point',
+    description: 'Both splits meet here before the branch column fans out.',
+    progress: 0,
+    locked: true,
+    hue: 196,
+    modal: { badge: 'PRACTICE', cta: 'Play module', showStats: true }
+  },
+  {
+    id: 'c3m3b',
+    column: 3,
+    row: 3,
+    chapter: '3B',
+    title: 'Lower branch',
+    description: 'Paired with chapter 3 — carries the lower lane forward.',
+    progress: 0,
+    locked: true,
+    hue: 192,
+    modal: { badge: 'PRACTICE', cta: 'Play module', showStats: true }
+  },
+  {
+    id: 'c3m4',
+    column: 4,
+    row: 2,
+    chapter: '4',
+    title: 'Convergence',
+    description: 'All three lanes from column 3 rejoin on the main spine.',
+    progress: 0,
+    locked: true,
+    hue: 194,
+    modal: { badge: 'PRACTICE', cta: 'Play module', showStats: true }
+  },
+  {
+    id: 'c3m5',
+    column: 5,
+    row: 2,
+    chapter: '5',
+    title: 'Final gate',
+    description: 'Last module on the advanced path.',
+    progress: 0,
+    locked: true,
+    hue: 200,
+    modal: { badge: 'CHECK-IN', cta: 'Play module', showStats: true }
+  }
+];
+
+export const CHAPTER_3_EDGES = [
+  ['c3m1', 'c3m2a'],
+  ['c3m1', 'c3m2b'],
+  ['c3m2a', 'c3m3a'],
+  ['c3m2a', 'c3m3'],
+  ['c3m2b', 'c3m3b'],
+  ['c3m2b', 'c3m3'],
+  ['c3m3', 'c3m4'],
+  ['c3m3a', 'c3m4'],
+  ['c3m3b', 'c3m4'],
+  ['c3m4', 'c3m5']
+];
+
+export const CHAPTER_3_CORD_ANCHORS = {
+  'c3m1|c3m2a': { from: 'right', to: 'left', fromAlong: 0.34, toAlong: 0.42, slack: 1.14, sagSign: -1 },
+  'c3m1|c3m2b': { from: 'right', to: 'left', fromAlong: 0.66, toAlong: 0.58, slack: 1.14, sagSign: 1 },
+  'c3m2a|c3m3a': { from: 'right', to: 'left', fromAlong: 0.48, toAlong: 0.32, slack: 1.1, sagSign: -1 },
+  'c3m2a|c3m3': { from: 'right', to: 'left', fromAlong: 0.52, toAlong: 0.5, slack: 1.12, sagSign: -1 },
+  'c3m2b|c3m3b': { from: 'right', to: 'left', fromAlong: 0.48, toAlong: 0.68, slack: 1.1, sagSign: 1 },
+  'c3m2b|c3m3': { from: 'right', to: 'left', fromAlong: 0.52, toAlong: 0.5, slack: 1.12, sagSign: 1 },
+  'c3m3|c3m4': { from: 'right', to: 'left', slack: 1.06, sagSign: 1 },
+  'c3m3a|c3m4': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.36, slack: 1.1, sagSign: -1 },
+  'c3m3b|c3m4': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.64, slack: 1.1, sagSign: 1 },
+  'c3m4|c3m5': { from: 'right', to: 'left', slack: 1.06, sagSign: 1 }
+};
+
+export const CHAPTER_3_PLAY_SCENARIOS = {
+  c3m1: {
+    choicesPrompt: 'Which path does your choice open?',
+    outcomes: [
+      {
+        id: 'upper',
+        label: 'Upper split',
+        hint: 'Strong outcome — continue up',
+        direction: 'up',
+        plugWire: true,
+        unlocks: ['c3m2a'],
+        fills: ['c3m1|c3m2a'],
+        lastChoice: 'Upper split',
+        empathyScore: 80,
+        result: 'Upper lane opens ahead.'
+      },
+      {
+        id: 'lower',
+        label: 'Lower split',
+        hint: 'Reinforcement lane — path down',
+        direction: 'down',
+        plugWire: true,
+        unlocks: ['c3m2b'],
+        fills: ['c3m1|c3m2b'],
+        lastChoice: 'Lower split',
+        empathyScore: 80,
+        result: 'The lower lane opens below.'
+      }
+    ]
+  },
+  c3m2a: {
+    choicesPrompt: 'From the upper split',
+    outcomes: [
+      {
+        id: 'branch',
+        label: 'Feed upper branch',
+        direction: 'up',
+        plugWire: true,
+        unlocks: ['c3m3a'],
+        fills: ['c3m2a|c3m3a'],
+        lastChoice: 'Upper branch',
+        empathyScore: 80,
+        result: 'Chapter 3A opens above the merge.'
+      },
+      {
+        id: 'merge',
+        label: 'Merge early',
+        hint: 'Join the center lane',
+        plugWire: true,
+        unlocks: ['c3m3'],
+        fills: ['c3m2a|c3m3'],
+        lastChoice: 'Early merge',
+        empathyScore: 80,
+        result: 'You join chapter 3 on the spine.'
+      }
+    ]
+  },
+  c3m2b: {
+    choicesPrompt: 'From the lower split',
+    outcomes: [
+      {
+        id: 'branch',
+        label: 'Feed lower branch',
+        direction: 'down',
+        plugWire: true,
+        unlocks: ['c3m3b'],
+        fills: ['c3m2b|c3m3b'],
+        lastChoice: 'Lower branch',
+        empathyScore: 80,
+        result: 'Chapter 3B opens below the merge.'
+      },
+      {
+        id: 'merge',
+        label: 'Merge early',
+        hint: 'Join the center lane',
+        plugWire: true,
+        unlocks: ['c3m3'],
+        fills: ['c3m2b|c3m3'],
+        lastChoice: 'Early merge',
+        empathyScore: 80,
+        result: 'You join chapter 3 on the spine.'
+      }
+    ]
+  },
+  c3m3a: {
+    choicesPrompt: 'Continue from the upper branch',
+    outcomes: [
+      {
+        id: 'continue',
+        label: 'Move to convergence',
+        plugWire: true,
+        unlocks: ['c3m4'],
+        fills: ['c3m3a|c3m4'],
+        lastChoice: 'Upper branch',
+        result: 'Chapter 4 opens ahead.'
+      }
+    ]
+  },
+  c3m3: {
+    choicesPrompt: 'Leave the merge point',
+    outcomes: [
+      {
+        id: 'continue',
+        label: 'Continue to convergence',
+        plugWire: true,
+        unlocks: ['c3m4'],
+        fills: ['c3m3|c3m4'],
+        lastChoice: 'Merge point',
+        result: 'Chapter 4 opens ahead.'
+      }
+    ]
+  },
+  c3m3b: {
+    choicesPrompt: 'Continue from the lower branch',
+    outcomes: [
+      {
+        id: 'continue',
+        label: 'Move to convergence',
+        plugWire: true,
+        unlocks: ['c3m4'],
+        fills: ['c3m3b|c3m4'],
+        lastChoice: 'Lower branch',
+        result: 'Chapter 4 opens ahead.'
+      }
+    ]
+  },
+  c3m4: {
+    choicesPrompt: 'Clear convergence',
+    outcomes: [
+      {
+        id: 'continue',
+        label: 'Continue to final gate',
+        plugWire: true,
+        unlocks: ['c3m5'],
+        fills: ['c3m4|c3m5'],
+        lastChoice: 'Convergence',
+        result: 'Final gate is available.'
+      }
+    ]
+  },
+  c3m5: {
+    choicesPrompt: 'Close the volume',
+    outcomes: [
+      {
+        id: 'finish',
+        label: 'Complete volume',
+        lastChoice: 'Final gate',
+        result: 'Volume 3 complete.'
+      }
+    ]
+  }
+};
+
+export const CHAPTER_2_END_MODULE_ID = 'c2m3';
+export const CHAPTER_3_END_MODULE_ID = 'c3m5';
+
 export function getChapterGraph(chapter) {
   if (chapter === 2) {
     return {
@@ -370,6 +661,14 @@ export function getChapterGraph(chapter) {
       edges: CHAPTER_2_EDGES,
       cordAnchors: CHAPTER_2_CORD_ANCHORS,
       scenarios: CHAPTER_2_PLAY_SCENARIOS
+    };
+  }
+  if (chapter === 3) {
+    return {
+      modules: CHAPTER_3_MODULES,
+      edges: CHAPTER_3_EDGES,
+      cordAnchors: CHAPTER_3_CORD_ANCHORS,
+      scenarios: CHAPTER_3_PLAY_SCENARIOS
     };
   }
   return {
@@ -395,5 +694,13 @@ export const MODULE_SKILL_FOCUS = {
   m5: 'ownership',
   c2m1: 'communication',
   c2m2: 'empathy',
-  c2m3: 'ownership'
+  c2m3: 'ownership',
+  c3m1: 'communication',
+  c3m2a: 'empathy',
+  c3m2b: 'ownership',
+  c3m3a: 'empathy',
+  c3m3: 'communication',
+  c3m3b: 'ownership',
+  c3m4: 'empathy',
+  c3m5: 'ownership'
 };

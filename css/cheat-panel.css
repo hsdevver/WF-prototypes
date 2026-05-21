@@ -129,6 +129,12 @@
   gap: 0.35rem;
 }
 
+.cheat-panel__path-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
 .cheat-panel__reset-path {
   width: 100%;
   padding: 0.5rem 0.65rem;
