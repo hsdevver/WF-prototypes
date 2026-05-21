@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="en" data-skin="space" data-appearance="dark" data-corporate-appearance="image" data-module-layout="clean">
   <head>
+    <script>
+      (function () {
+        var skin = (new URLSearchParams(location.search).get('skin') || '').trim().toLowerCase();
+        if (skin === 'corporate' || skin === 'space') {
+          document.documentElement.dataset.skin = skin;
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WF Prototypes</title>

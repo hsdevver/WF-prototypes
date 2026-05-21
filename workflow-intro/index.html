@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <html lang="en" data-skin="space" data-appearance="dark" data-corporate-appearance="image" data-module-layout="clean">
   <head>
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var skin = (q.get('skin') || '').trim().toLowerCase();
+        if (!skin && location.hash) {
+          var h = location.hash.replace(/^#/, '').trim();
+          if (h === 'corporate' || h === 'space') skin = h;
+          else if (h.indexOf('=') >= 0) {
+            skin = (new URLSearchParams(h.charAt(0) === '?' ? h.slice(1) : h).get('skin') || '')
+              .trim()
+              .toLowerCase();
+          }
+        }
+        if (skin === 'corporate' || skin === 'space') {
+          document.documentElement.dataset.skin = skin;
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>workflow intro — WF Prototype</title>
@@ -54,13 +72,19 @@
                 <div class="intro-corporate-board__backdrop" aria-hidden="true"></div>
                 <header class="intro-corporate-board__hero">
                   <nav class="intro-corporate-nav" aria-label="Volumes">
-                    <button type="button" class="intro-corporate-nav__item is-active" aria-current="page">
+                    <button
+                      type="button"
+                      class="intro-corporate-nav__item is-active"
+                      data-volume="1"
+                      aria-current="page"
+                    >
                       Volume 1
                     </button>
                     <span class="intro-corporate-nav__connector" aria-hidden="true"></span>
                     <button
                       type="button"
                       class="intro-corporate-nav__item is-locked"
+                      data-volume="2"
                       disabled
                       aria-label="Volume 2 (locked)"
                     >
@@ -81,6 +105,7 @@
                     <button
                       type="button"
                       class="intro-corporate-nav__item is-locked"
+                      data-volume="3"
                       disabled
                       aria-label="Volume 3 (locked)"
                     >
@@ -120,37 +145,76 @@
 
                   <div class="intro-corporate-leaderboard-panel">
                     <div class="intro-corporate-leaderboard-column">
-                      <div
-                        class="intro-corporate-leaderboard-scopes"
-                        role="group"
-                        aria-label="Leaderboard scope"
+                      <section
+                        class="intro-corporate-player-profile"
+                        id="intro-corporate-player-profile"
+                        aria-label="Your profile"
                       >
-                        <button
-                          type="button"
-                          class="intro-corporate-leaderboard-scope is-active"
-                          data-scope="department"
-                          aria-pressed="true"
-                          aria-label="Department leaderboard"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="3" />
-                            <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          class="intro-corporate-leaderboard-scope"
-                          data-scope="company"
-                          aria-pressed="false"
-                          aria-label="Company-wide leaderboard"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                            <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
-                            <path d="M6 12h12M6 8h12M6 16h12M10 6h4" />
-                          </svg>
-                        </button>
-                      </div>
+                        <div class="intro-corporate-player-profile__identity">
+                          <h3 class="intro-corporate-player-profile__name" data-player-name>You</h3>
+                          <div class="intro-corporate-player-profile__stats">
+                            <div class="intro-corporate-player-profile__stat">
+                              <span class="intro-corporate-player-profile__stat-label">Score</span>
+                              <span class="intro-corporate-player-profile__stat-value" data-player-score>2,480</span>
+                            </div>
+                            <div class="intro-corporate-player-profile__stat">
+                              <span class="intro-corporate-player-profile__stat-label">Stars</span>
+                              <span class="intro-corporate-player-profile__stat-value" data-player-stars>0</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="intro-corporate-player-profile__skills" aria-label="Skill breakdown">
+                          <div class="intro-corporate-skill" data-skill="empathy">
+                            <div class="intro-corporate-skill__head">
+                              <span class="intro-corporate-skill__label">Empathy</span>
+                              <span class="intro-corporate-skill__pct" data-skill-pct="empathy">—</span>
+                            </div>
+                            <div class="intro-corporate-skill__track" aria-hidden="true">
+                              <div class="intro-corporate-skill__fill" data-skill-fill="empathy"></div>
+                            </div>
+                          </div>
+                          <div class="intro-corporate-skill" data-skill="ownership">
+                            <div class="intro-corporate-skill__head">
+                              <span class="intro-corporate-skill__label">Ownership</span>
+                              <span class="intro-corporate-skill__pct" data-skill-pct="ownership">—</span>
+                            </div>
+                            <div class="intro-corporate-skill__track" aria-hidden="true">
+                              <div class="intro-corporate-skill__fill" data-skill-fill="ownership"></div>
+                            </div>
+                          </div>
+                          <div class="intro-corporate-skill" data-skill="communication">
+                            <div class="intro-corporate-skill__head">
+                              <span class="intro-corporate-skill__label">Communication</span>
+                              <span class="intro-corporate-skill__pct" data-skill-pct="communication">—</span>
+                            </div>
+                            <div class="intro-corporate-skill__track" aria-hidden="true">
+                              <div
+                                class="intro-corporate-skill__fill"
+                                data-skill-fill="communication"
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+
+                      <aside
+                        class="intro-corporate-feedback"
+                        id="intro-corporate-feedback"
+                        aria-label="Coaching feedback"
+                      >
+                        <div class="intro-corporate-feedback__head">
+                          <span class="intro-corporate-feedback__label">Feedback</span>
+                          <span class="intro-corporate-feedback__hint">Next run</span>
+                        </div>
+                        <p class="intro-corporate-feedback__focus" data-feedback-focus>
+                          Play your first scored module to unlock coaching notes here.
+                        </p>
+                        <p class="intro-corporate-feedback__strength">
+                          <span class="intro-corporate-feedback__strength-label">Keep up</span>
+                          <span data-feedback-strength>Showing up on the path counts—finish a module to see your edge.</span>
+                        </p>
+                      </aside>
+
                       <aside
                         class="intro-corporate-leaderboard"
                         id="intro-corporate-leaderboard"
@@ -158,7 +222,54 @@
                         data-leaderboard-scope="department"
                       >
                     <div class="intro-corporate-leaderboard__head">
-                      <span class="intro-corporate-leaderboard__label">Leaderboard</span>
+                      <div class="intro-corporate-leaderboard__head-row">
+                        <span class="intro-corporate-leaderboard__label">Leaderboard</span>
+                        <div
+                          class="intro-corporate-leaderboard-scopes"
+                          role="group"
+                          aria-label="Leaderboard scope"
+                        >
+                          <button
+                            type="button"
+                            class="intro-corporate-leaderboard-scope is-active"
+                            data-scope="department"
+                            aria-pressed="true"
+                            aria-label="Department leaderboard"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                              <circle cx="9" cy="7" r="3" />
+                              <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            class="intro-corporate-leaderboard-scope"
+                            data-scope="starclub"
+                            aria-pressed="false"
+                            aria-label="Star club leaderboard"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                              <path
+                                stroke-linejoin="round"
+                                d="M12 3.2l2.35 5.45 5.9.52-4.45 3.85 1.35 5.75L12 16.1l-5.15 2.67 1.35-5.75-4.45-3.85 5.9-.52L12 3.2z"
+                              />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            class="intro-corporate-leaderboard-scope"
+                            data-scope="company"
+                            aria-pressed="false"
+                            aria-label="Company-wide leaderboard"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                              <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+                              <path d="M6 12h12M6 8h12M6 16h12M10 6h4" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                       <span class="intro-corporate-leaderboard__scope" data-leaderboard-scope-label>Department</span>
                     </div>
                     <div class="intro-corporate-leaderboard__list-wrap">
@@ -268,6 +379,6 @@
       })();
     </script>
     <script src="../js/cheat-panel.js?v=corporate-hero-office-1" type="module"></script>
-    <script src="../js/workflow-intro.js" type="module"></script>
+    <script src="../js/workflow-intro.js?v=skin-url-sync-1" type="module"></script>
   </body>
 </html>

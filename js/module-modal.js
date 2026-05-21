@@ -1,6 +1,6 @@
 import { getChapterCapsLabel } from './consequence-flow.js';
 import { recordPlayActivity } from './intro-activity-log.js';
-import { applyPlayOutcome, getPlayScenario } from './consequence-progress.js';
+import { applyPlayOutcome, getPlayScenario, getRuntimeModule } from './consequence-progress.js';
 import { playModuleHoverClick } from './ui-sounds.js';
 
 const CORPORATE_PATH_INSET = 0.05;
@@ -141,6 +141,7 @@ function ensureDom() {
   ctaBtn = document.createElement('button');
   ctaBtn.type = 'button';
   ctaBtn.className = 'module-modal__cta';
+  ctaBtn.hidden = true;
 
   actionsEl.append(backBtn, ctaBtn);
   body.append(detailBlock, playBlock, actionsEl);
@@ -164,7 +165,7 @@ function setView(view) {
 
   detailBlock.hidden = view !== 'detail';
   playBlock.hidden = view !== 'choices';
-  ctaBtn.hidden = false;
+  ctaBtn.hidden = view !== 'detail';
   backBtn.hidden = false;
 }
 
@@ -209,11 +210,8 @@ function corporatePanelTargetRectFromColumns() {
   };
 }
 
-/** Panel frame matches the clicked module cell (inner card + outer wrap share one box). */
-function corporatePanelTargetRect(sourceCard) {
-  const host = getCorporatePathHost();
-  const wrap = sourceCard?.closest('.intro-module-wrap');
-  if (host && wrap) return rectWithinHost(host, wrap);
+/** Expanded chapter panel — inset on #intro-columns (animate from clicked card). */
+function corporatePanelTargetRect() {
   return corporatePanelTargetRectFromColumns();
 }
 
@@ -254,7 +252,7 @@ function bindCorporateResize() {
   if (corporateResizeListener) return;
   corporateResizeListener = () => {
     if (!modalState.open || !modalState.corporatePathLayout) return;
-    const target = corporatePanelTargetRect(modalState.sourceCard);
+    const target = corporatePanelTargetRect();
     if (!target) return;
     applyCorporatePanelFrame(target);
   };
@@ -273,7 +271,7 @@ function corporateOriginWrap(sourceCard) {
 
 function runCorporatePathOpen(sourceCard) {
   const host = getCorporatePathHost();
-  const target = corporatePanelTargetRect(sourceCard);
+  const target = corporatePanelTargetRect();
   if (!host || !target) {
     modalState.corporatePathLayout = false;
     sourceCard.classList.add('is-modal-source');
@@ -325,7 +323,7 @@ function runCorporatePathClose(onDone) {
     return;
   }
 
-  const target = corporatePanelTargetRect(sourceCard);
+  const target = corporatePanelTargetRect();
   if (!target) {
     onDone();
     return;
@@ -359,8 +357,6 @@ function populatePanel(mod, imageUrl) {
   badgeEl.textContent = isCorporateSkin() && chapterLabel ? chapterLabel : meta.badge;
   titleEl.textContent = mod.title;
   descEl.textContent = mod.description;
-  ctaBtn.textContent = scenario ? meta.cta : 'Close';
-
   statsEl.classList.toggle('is-hidden', !meta.showStats);
   if (meta.showStats) {
     statsEl.querySelector('[data-stat="lastChoice"]').textContent = meta.lastChoice ?? '—';
@@ -369,6 +365,9 @@ function populatePanel(mod, imageUrl) {
   }
 
   panelEl.style.setProperty('--module-hue', String(mod.hue ?? 205));
+
+  ctaBtn.textContent = scenario ? meta.cta : 'Close';
+  choicesEl.innerHTML = '';
   setView('detail');
 }
 
@@ -384,14 +383,17 @@ function onOutcomePick(outcome) {
   }
 
   const { mod, onProgress } = modalState;
+  const wasPlayed = Boolean(getRuntimeModule(mod.id)?.completed);
   const newlyUnlocked = applyPlayOutcome(mod.id, outcome);
-  recordPlayActivity(mod, outcome, newlyUnlocked);
+  recordPlayActivity(mod, outcome, newlyUnlocked, {
+    playMode: wasPlayed ? 'replayed' : 'live'
+  });
   closeModuleModal(() => {
     onProgress?.(newlyUnlocked, mod.id);
   });
 }
 
-function showChoices(scenario) {
+function renderPlayChoices(scenario) {
   playPromptEl.textContent = scenario.choicesPrompt;
   choicesEl.innerHTML = '';
 
@@ -435,7 +437,7 @@ function onCtaClick() {
     return;
   }
   playModuleHoverClick({ bypassThrottle: true });
-  showChoices(scenario);
+  renderPlayChoices(scenario);
 }
 
 function onBackClick() {

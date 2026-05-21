@@ -109,6 +109,11 @@ html.is-intro-scrubbing .intro-module-wrap.is-revealed {
   filter: blur(calc(var(--module-blur, 0) * 1px));
 }
 
+html.is-intro-scrubbing[data-skin='space'] .intro-module-wrap.is-revealed > .module-card {
+  animation: none;
+  transform: none;
+}
+
 html.is-intro-scrubbing .intro-path-map,
 html.is-intro-scrubbing .intro-cord-rope {
   transition: none;
@@ -258,6 +263,58 @@ html.is-intro-scrubbing .intro-cord-rope {
   min-height: 100vh;
   min-height: 100dvh;
   padding: 12vh 1.5rem 18vh;
+}
+
+/* Space skin: path map lives in .intro-corporate-board (hidden for corporate-only chrome) */
+html[data-skin='space'] .intro-corporate-board {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}
+
+html[data-skin='space'] .intro-corporate-board__backdrop,
+html[data-skin='space'] .intro-corporate-board__hero,
+html[data-skin='space'] .intro-corporate-board__copy,
+html[data-skin='space'] .intro-corporate-leaderboard-panel,
+html[data-skin='space'] .intro-corporate-activity {
+  display: none !important;
+}
+
+html[data-skin='space'] .intro-corporate-board__body,
+html[data-skin='space'] .intro-corporate-board__main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  background: transparent;
+}
+
+html[data-skin='space'] .intro-corporate-board__path.intro-modules {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* Title sits above path (DOM order is board then h2) */
+html[data-skin='space'] .intro-beat--chapter > .intro-chapter {
+  order: -1;
+}
+
+html[data-skin='space'] .intro-beat--chapter > .intro-corporate-board {
+  order: 0;
 }
 
 .intro-workflow {
@@ -436,6 +493,28 @@ html.is-intro-scrubbing .intro-cord-rope {
 }
 
 .intro-cord-tooltip.is-visible {
+  opacity: 1;
+}
+
+.intro-path-hover-tooltips {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.intro-path-map.is-module-path-hover .intro-cord.is-path-highlight {
+  z-index: 4;
+}
+
+.intro-path-map.is-module-path-hover .intro-cord.is-path-highlight.is-filled .intro-cord-rope--body,
+.intro-path-map.is-module-path-hover .intro-cord.is-path-highlight.is-filled .intro-cord-rope--sheen {
+  filter: drop-shadow(
+    0 0 14px color-mix(in srgb, var(--lane-fill-done, var(--theme-color, #6baed0)) 65%, transparent)
+  );
+}
+
+.intro-cord-tooltip--path-hover.is-visible {
   opacity: 1;
 }
 
@@ -682,7 +761,38 @@ html[data-skin='space'][data-appearance='light'] .intro-next-chapter {
   --module-blur: 0;
 }
 
-.intro-viewport.is-modules-visible .intro-module-wrap.is-revealed {
+/* Space: bob each card inside its grid cell so #intro-columns stays fixed */
+html[data-skin='space'] .intro-viewport.is-modules-visible .intro-module-wrap.is-revealed {
+  animation: none;
+}
+
+html[data-skin='space'] .intro-viewport.is-modules-visible .intro-module-wrap.is-revealed > .module-card {
+  animation: intro-module-card-float var(--float-duration, 4.8s) ease-in-out infinite;
+  animation-delay: calc(var(--float-delay, 0) * 1s);
+}
+
+html[data-skin='space'].is-plug-active .intro-module-wrap.is-revealed > .module-card,
+html[data-skin='space'].is-module-modal-open .intro-module-wrap.is-revealed > .module-card,
+html[data-skin='space'].is-intro-handoff .intro-module-wrap.is-revealed > .module-card {
+  animation-play-state: paused;
+}
+
+html[data-skin='space'].is-plug-active .intro-module-wrap.is-revealed > .module-card {
+  transition: none;
+}
+
+@keyframes intro-module-card-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(calc(var(--float-amp, 3) * -1px));
+  }
+}
+
+/* Non-space skins (if any) keep legacy wrap float */
+html:not([data-skin='space']) .intro-viewport.is-modules-visible .intro-module-wrap.is-revealed {
   animation: intro-module-float 4.8s ease-in-out infinite;
   animation-delay: calc(var(--float-delay, 0) * 1s);
 }

@@ -4,28 +4,36 @@ import {
   EMPATHY_SCORE_FOUR_STARS,
   starsFromEmpathyScore
 } from './empathy-score.js';
-import { getRuntimeModule, syncModuleScoresFromActivity } from './consequence-progress.js';
+import { getPlayScenario, getRuntimeModule, syncModuleScoresFromActivity } from './consequence-progress.js';
 
 const STORAGE_KEY = 'wf-proto-activity-log';
 const MAX_STORED = 80;
 const VISIBLE_ROWS = 7;
 const ACTIVITY_HEIGHT_RATIO = 0.75;
 const ACTIVITY_MIN_HEIGHT_PX = 120;
+const BRANCH_BLINK_MS = 1200;
+const BRANCH_RESOLVE_MS = 420;
+const UNLOCK_STAGGER_MS = 140;
 
 let activityHeightObserver = null;
 
-/** @typedef {'played' | 'scored' | 'decision' | 'unlocked'} ActivityKind */
+/** @typedef {'played' | 'replayed' | 'scored' | 'decision' | 'branch' | 'unlocked'} ActivityKind */
+/** @typedef {'live' | 'replayed'} PlayMode */
+/** @typedef {'tl' | 'tr' | 'bl' | 'br'} BranchQuadrant */
 
 /**
  * @typedef {object} ActivityEntry
  * @property {string} id
  * @property {number} at
  * @property {ActivityKind} kind
+ * @property {PlayMode} [playMode]
  * @property {string} [moduleId]
  * @property {string} [chapter]
  * @property {string} [title]
  * @property {number} [score]
+ * @property {number} [pointsGained]
  * @property {string} [decision]
+ * @property {BranchQuadrant} [quadrant]
  * @property {string} [text] legacy plain line
  */
 
@@ -35,20 +43,56 @@ let entries = loadEntries();
 /** Chunky glyphs — no frame, sit on frosted panel */
 const ACTIVITY_ICON_SVG = {
   played: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="currentColor" d="M8.5 6.75v10.5l9-5.25-9-5.25z"/></svg>`,
+  replayed: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" d="M7.5 7.5v3.5H4M16.5 16.5v-3.5H20"/><path fill="currentColor" d="M8.5 8.25 6.2 12 8.5 15.75 12 16.5 15.5 15.75 17.8 12 15.5 8.25 12 7.5z"/></svg>`,
   scored: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5.5" y="13.25" width="4" height="6.25" fill="currentColor"/><rect x="10" y="10.25" width="4" height="9.25" fill="currentColor"/><rect x="14.5" y="7.25" width="4" height="12.25" fill="currentColor"/></svg>`,
   decision: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path fill="currentColor" d="M4.5 8.25 9.25 12 4.5 15.75z"/><path fill="currentColor" d="M19.5 8.25 14.75 12 19.5 15.75z"/></svg>`,
   unlocked: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="square" d="M8.75 12V9.5a3.25 3.25 0 0 1 6.5 0V12"/><rect x="7" y="12" width="10" height="7.25" fill="currentColor"/></svg>`
 };
 
-/** @param {ActivityKind | 'unlocked'} kind */
+/** @param {ActivityKind | 'unlocked' | 'replayed'} kind */
 function createActivityIcon(kind) {
   const icon = document.createElement('span');
   const mod =
-    kind === 'unlocked' ? 'unlock' : kind === 'scored' ? 'score' : kind === 'decision' ? 'decision' : 'play';
+    kind === 'unlocked'
+      ? 'unlock'
+      : kind === 'replayed'
+        ? 'replayed'
+        : kind === 'scored'
+          ? 'score'
+          : kind === 'decision' || kind === 'branch'
+            ? 'decision'
+            : 'play';
   icon.className = `intro-corporate-activity__icon intro-corporate-activity__icon--${mod}`;
-  icon.innerHTML = ACTIVITY_ICON_SVG[kind] ?? ACTIVITY_ICON_SVG.played;
+  icon.innerHTML = ACTIVITY_ICON_SVG[kind === 'played' ? 'played' : kind] ?? ACTIVITY_ICON_SVG.played;
   icon.setAttribute('aria-hidden', 'true');
   return icon;
+}
+
+/** @param {BranchQuadrant} [selected] */
+function createBranchPicker(selected) {
+  const wrap = document.createElement('div');
+  wrap.className = 'intro-corporate-activity__branch';
+  wrap.setAttribute('role', 'img');
+  wrap.setAttribute('aria-label', 'Path branch choice');
+
+  const ring = document.createElement('div');
+  ring.className = 'intro-corporate-activity__branch-ring';
+
+  for (const quad of ['tl', 'tr', 'bl', 'br']) {
+    const el = document.createElement('span');
+    el.className = `intro-corporate-activity__branch-quad intro-corporate-activity__branch-quad--${quad}`;
+    el.dataset.quad = quad;
+    if (selected === quad) el.classList.add('is-selected');
+    ring.appendChild(el);
+  }
+
+  const core = document.createElement('span');
+  core.className = 'intro-corporate-activity__branch-core';
+  core.setAttribute('aria-hidden', 'true');
+  ring.appendChild(core);
+
+  wrap.appendChild(ring);
+  return wrap;
 }
 
 function moduleIdFromPlayedParts(chapter, title) {
@@ -65,7 +109,7 @@ function repairMissingScoredEntries() {
     if (entries.some((e) => e.kind === 'scored' && e.moduleId === moduleId)) continue;
     const playedIdx = entries.findLastIndex(
       (e) =>
-        e.kind === 'played' &&
+        (e.kind === 'played' || e.kind === 'replayed') &&
         (e.moduleId === moduleId || e.title?.trim() === 'First practice')
     );
     if (playedIdx < 0) continue;
@@ -74,7 +118,8 @@ function repairMissingScoredEntries() {
       at: entries[playedIdx].at + 1,
       kind: 'scored',
       moduleId,
-      score: EMPATHY_SCORE_FOUR_STARS
+      score: EMPATHY_SCORE_FOUR_STARS,
+      pointsGained: EMPATHY_SCORE_FOUR_STARS
     });
     changed = true;
   }
@@ -100,6 +145,32 @@ function normalizeEntry(raw) {
   const text = typeof raw.text === 'string' ? raw.text.trim() : '';
   if (!text) return /** @type {ActivityEntry} */ ({ ...raw, kind: 'played', text: '' });
 
+  if (text.startsWith('Replayed ')) {
+    const rest = text.slice(9);
+    const colon = rest.indexOf(':');
+    if (colon >= 0) {
+      const chapter = rest.slice(0, colon).trim();
+      const title = rest.slice(colon + 1).trim();
+      return {
+        id: raw.id ?? '',
+        at: raw.at ?? Date.now(),
+        kind: 'played',
+        playMode: 'replayed',
+        moduleId: moduleIdFromPlayedParts(chapter, title),
+        chapter,
+        title
+      };
+    }
+    return {
+      id: raw.id ?? '',
+      at: raw.at ?? Date.now(),
+      kind: 'played',
+      playMode: 'replayed',
+      chapter: rest,
+      title: ''
+    };
+  }
+
   if (text.startsWith('Played ')) {
     const rest = text.slice(7);
     const colon = rest.indexOf(':');
@@ -110,21 +181,36 @@ function normalizeEntry(raw) {
         id: raw.id ?? '',
         at: raw.at ?? Date.now(),
         kind: 'played',
+        playMode: text.startsWith('Played live') ? 'live' : 'live',
         moduleId: moduleIdFromPlayedParts(chapter, title),
         chapter,
         title
       };
     }
-    return { id: raw.id ?? '', at: raw.at ?? Date.now(), kind: 'played', chapter: rest, title: '' };
+    return { id: raw.id ?? '', at: raw.at ?? Date.now(), kind: 'played', playMode: 'live', chapter: rest, title: '' };
   }
 
-  const scored = text.match(/^Scored (\d+) points in empathy$/);
-  if (scored) {
+  const gained = text.match(/^Gained (\d+) points/);
+  if (gained) {
+    const score = Number(gained[1]);
     return {
       id: raw.id ?? '',
       at: raw.at ?? Date.now(),
       kind: 'scored',
-      score: Number(scored[1])
+      score,
+      pointsGained: score
+    };
+  }
+
+  const scored = text.match(/^Scored (\d+) points in empathy$/);
+  if (scored) {
+    const score = Number(scored[1]);
+    return {
+      id: raw.id ?? '',
+      at: raw.at ?? Date.now(),
+      kind: 'scored',
+      score,
+      pointsGained: score
     };
   }
 
@@ -134,6 +220,16 @@ function normalizeEntry(raw) {
       at: raw.at ?? Date.now(),
       kind: 'decision',
       decision: text.slice(15).trim()
+    };
+  }
+
+  if (text.startsWith('Chose ')) {
+    return {
+      id: raw.id ?? '',
+      at: raw.at ?? Date.now(),
+      kind: 'branch',
+      decision: text.slice(5).trim(),
+      quadrant: 'tl'
     };
   }
 
@@ -165,23 +261,65 @@ function moduleParts(mod) {
   return { chapter, title };
 }
 
+function isBranchOutcome(mod, outcome) {
+  const scenario = getPlayScenario(mod.id);
+  if (!scenario) return false;
+  const list = scenario.outcomes ?? [];
+  return list.length > 1 || Boolean(outcome.direction);
+}
+
+/** @param {import('./consequence-flow.js').PlayOutcome} outcome */
+/** @param {{ id: string, outcomes?: { id: string, direction?: string }[] }} mod */
+function quadrantForOutcome(mod, outcome) {
+  if (outcome.direction === 'up') return 'tl';
+  if (outcome.direction === 'down') return 'bl';
+  const scenario = getPlayScenario(mod.id);
+  const idx = scenario?.outcomes?.findIndex((o) => o.id === outcome.id) ?? -1;
+  const order = /** @type {BranchQuadrant[]} */ (['tl', 'tr', 'bl', 'br']);
+  return order[idx >= 0 ? idx % 4 : 0];
+}
+
 /**
  * @param {import('./consequence-flow.js').PlayOutcome} outcome
  * @param {string[]} newlyUnlocked
+ * @param {{ playMode?: PlayMode }} [options]
  * @returns {Omit<ActivityEntry, 'id' | 'at'>[]}
  */
-export function buildActivityEntries(mod, outcome, newlyUnlocked = []) {
+export function buildActivityEntries(mod, outcome, newlyUnlocked = [], options = {}) {
   /** @type {Omit<ActivityEntry, 'id' | 'at'>[]} */
   const items = [];
   const { chapter, title } = moduleParts(mod);
+  const playMode = options.playMode === 'replayed' ? 'replayed' : 'live';
 
-  items.push({ kind: 'played', moduleId: mod.id, chapter, title });
+  items.push({
+    kind: 'played',
+    playMode,
+    moduleId: mod.id,
+    chapter,
+    title
+  });
 
   const score = computeEmpathyScore(mod, outcome);
-  if (score != null) items.push({ kind: 'scored', moduleId: mod.id, score });
+  if (score != null) {
+    items.push({
+      kind: 'scored',
+      moduleId: mod.id,
+      score,
+      pointsGained: score
+    });
+  }
 
   if (outcome.lastChoice?.trim()) {
-    items.push({ kind: 'decision', decision: outcome.lastChoice.trim() });
+    if (isBranchOutcome(mod, outcome)) {
+      items.push({
+        kind: 'branch',
+        moduleId: mod.id,
+        decision: outcome.lastChoice.trim(),
+        quadrant: quadrantForOutcome(mod, outcome)
+      });
+    } else {
+      items.push({ kind: 'decision', decision: outcome.lastChoice.trim() });
+    }
   }
 
   for (const id of newlyUnlocked) {
@@ -205,10 +343,13 @@ function entryPlainText(item) {
     case 'played': {
       const label =
         item.title && item.chapter ? `${item.chapter}: ${item.title}` : item.chapter || item.title || '';
-      return `Played ${label}`;
+      const verb = item.playMode === 'replayed' ? 'Replayed' : 'Played live';
+      return `${verb} ${label}`;
     }
     case 'scored':
-      return `Scored ${item.score} points in empathy`;
+      return `Gained ${item.pointsGained ?? item.score} points`;
+    case 'branch':
+      return `Chose ${item.decision ?? ''}`;
     case 'decision':
       return `Took decision: ${item.decision}`;
     case 'unlocked': {
@@ -264,16 +405,21 @@ function buildEntryLine(item) {
 
   switch (item.kind) {
     case 'played':
-      line.append('Played ');
+      if (item.playMode === 'replayed') {
+        line.append('Replayed ');
+      } else {
+        line.append('Played live ');
+      }
       appendEmphasis(line, item.chapter, item.title);
       break;
     case 'scored': {
       const starCount = starsFromEmpathyScore(item.score);
-      line.append('Scored ');
-      const pts = document.createElement('strong');
-      pts.className = 'intro-corporate-activity__emph';
-      pts.textContent = String(item.score);
-      line.append(pts, ' points in empathy');
+      const pts = item.pointsGained ?? item.score;
+      line.append('Gained ');
+      const ptsEl = document.createElement('strong');
+      ptsEl.className = 'intro-corporate-activity__emph';
+      ptsEl.textContent = String(pts);
+      line.append(ptsEl, ' points');
       if (starCount) {
         line.append(' · ');
         const stars = document.createElement('strong');
@@ -283,6 +429,15 @@ function buildEntryLine(item) {
       }
       break;
     }
+    case 'branch':
+      line.append('Chose ');
+      {
+        const d = document.createElement('strong');
+        d.className = 'intro-corporate-activity__emph';
+        d.textContent = item.decision ?? '';
+        line.append(d);
+      }
+      break;
     case 'decision':
       line.append('Took decision: ');
       {
@@ -303,13 +458,56 @@ function buildEntryLine(item) {
   return line;
 }
 
+function delayMs(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** @param {string} entryId */
+function animateBranchPicker(entryId) {
+  return new Promise((resolve) => {
+    const row = document.querySelector(`[data-activity-entry="${entryId}"]`);
+    const picker = row?.querySelector('.intro-corporate-activity__branch');
+    const quadrant = row?.dataset.branchQuadrant;
+    if (!picker || !quadrant) {
+      resolve();
+      return;
+    }
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      picker.classList.add('is-resolved');
+      picker.querySelector(`[data-quad="${quadrant}"]`)?.classList.add('is-selected');
+      resolve();
+      return;
+    }
+
+    picker.classList.add('is-blinking');
+    window.setTimeout(() => {
+      picker.classList.remove('is-blinking');
+      picker.classList.add('is-resolved');
+      picker.querySelectorAll('.intro-corporate-activity__branch-quad').forEach((q) => {
+        q.classList.toggle('is-selected', q.dataset.quad === quadrant);
+      });
+      window.setTimeout(resolve, BRANCH_RESOLVE_MS);
+    }, BRANCH_BLINK_MS);
+  });
+}
+
 /** @param {ActivityEntry} entry */
 function createEntryRow(entry) {
   const li = document.createElement('li');
   const kind = entry.kind ?? 'played';
   li.className = `intro-corporate-activity__row intro-corporate-activity__row--${kind}`;
+  li.dataset.activityEntry = entry.id;
 
-  li.appendChild(createActivityIcon(kind));
+  if (kind === 'branch') {
+    li.classList.add('intro-corporate-activity__row--branch');
+    if (entry.quadrant) li.dataset.branchQuadrant = entry.quadrant;
+    li.appendChild(createBranchPicker(entry.quadrant));
+  } else {
+    const iconKind = kind === 'played' && entry.playMode === 'replayed' ? 'replayed' : kind;
+    li.appendChild(createActivityIcon(iconKind));
+  }
 
   const content = document.createElement('div');
   content.className = 'intro-corporate-activity__content';
@@ -384,6 +582,12 @@ function render() {
   entries.forEach((entry, index) => {
     const row = createEntryRow(entry);
     if (index === entries.length - 1) row.dataset.activityAnchor = 'latest';
+    if (entry.kind === 'branch') {
+      row.querySelector('.intro-corporate-activity__branch')?.classList.add('is-resolved');
+      row
+        .querySelector(`[data-quad="${entry.quadrant}"]`)
+        ?.classList.add('is-selected');
+    }
     list.appendChild(row);
   });
 
@@ -391,24 +595,37 @@ function render() {
   syncActivityPanelHeight();
 }
 
-/**
- * @param {{ id: string, title?: string, modal?: { showStats?: boolean } }} mod
- * @param {import('./consequence-flow.js').PlayOutcome} outcome
- * @param {string[]} [newlyUnlocked]
- */
-export function recordPlayActivity(mod, outcome, newlyUnlocked = []) {
-  if (document.documentElement.dataset.skin !== 'corporate') return;
-  if (!document.getElementById('intro-activity-log-list')) return;
+function newEntryId(baseAt, index) {
+  return `${baseAt}-${index}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
-  const at = Date.now();
-  const batch = buildActivityEntries(mod, outcome, newlyUnlocked);
-
-  for (const item of batch) {
-    entries.push({
+/** @param {Omit<ActivityEntry, 'id' | 'at'>[]} batch */
+async function appendActivityBatch(batch, baseAt) {
+  for (let i = 0; i < batch.length; i++) {
+    const item = batch[i];
+    const entry = /** @type {ActivityEntry} */ ({
       ...item,
-      id: `${at}-${Math.random().toString(36).slice(2, 9)}`,
-      at
+      id: newEntryId(baseAt, i),
+      at: baseAt + i
     });
+
+    if (item.kind === 'branch') {
+      entries.push(entry);
+      if (entries.length > MAX_STORED) entries = entries.slice(entries.length - MAX_STORED);
+      saveEntries();
+      render();
+      await animateBranchPicker(entry.id);
+      continue;
+    }
+
+    if (item.kind === 'unlocked') {
+      const prev = batch[i - 1];
+      if (prev?.kind === 'branch' || prev?.kind === 'unlocked') {
+        await delayMs(UNLOCK_STAGGER_MS);
+      }
+    }
+
+    entries.push(entry);
   }
 
   if (entries.length > MAX_STORED) {
@@ -416,6 +633,21 @@ export function recordPlayActivity(mod, outcome, newlyUnlocked = []) {
   }
   saveEntries();
   render();
+}
+
+/**
+ * @param {{ id: string, title?: string, modal?: { showStats?: boolean } }} mod
+ * @param {import('./consequence-flow.js').PlayOutcome} outcome
+ * @param {string[]} [newlyUnlocked]
+ * @param {{ playMode?: PlayMode }} [options]
+ */
+export function recordPlayActivity(mod, outcome, newlyUnlocked = [], options = {}) {
+  if (document.documentElement.dataset.skin !== 'corporate') return;
+  if (!document.getElementById('intro-activity-log-list')) return;
+
+  const baseAt = Date.now();
+  const batch = buildActivityEntries(mod, outcome, newlyUnlocked, options);
+  void appendActivityBatch(batch, baseAt);
 }
 
 export function resetActivityLog() {

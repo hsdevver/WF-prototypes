@@ -167,15 +167,6 @@ export const MODULE_PLAY_SCENARIOS = {
         fills: ['m1|m2'],
         lastChoice: 'Oriented first',
         result: 'First practice is now open on your path.'
-      },
-      {
-        id: 'jump-in',
-        label: 'Jump straight into practice',
-        plugWire: true,
-        unlocks: ['m2'],
-        fills: ['m1|m2'],
-        lastChoice: 'Ready to practice',
-        result: 'First practice is now open on your path.'
       }
     ]
   },
@@ -393,3 +384,16 @@ export function getChapterGraph(chapter) {
 export const CONSEQUENCE_FILLED_EDGE_KEYS = [];
 
 export const CONSEQUENCE_PLAY_ORDER = ['m1', 'm2', 'm4', 'm6', 'm8', 'm5'];
+
+/** Primary skill each module contributes to the player profile aggregate. */
+export const MODULE_SKILL_FOCUS = {
+  m1: 'communication',
+  m2: 'empathy',
+  m4: 'ownership',
+  m6: 'empathy',
+  m8: 'communication',
+  m5: 'ownership',
+  c2m1: 'communication',
+  c2m2: 'empathy',
+  c2m3: 'ownership'
+};

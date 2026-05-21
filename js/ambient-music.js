@@ -7,6 +7,7 @@ const SPACE_PLAYLIST = ['p1.mov', 'p2.mov', 'p3.mov', 'p4.mov', 'p5.mov'];
 const CORPORATE_TRACK = 'office ambient.mp3';
 const MASTER_VOLUME = 0.5;
 const CORPORATE_VOLUME = 0.42;
+const DEFAULT_MUSIC_VOLUME = 0.13;
 const TAIL_FADE_SEC = 3;
 const TAIL_INDEX = 4;
 const RMS_WINDOW_SEC = 0.4;
@@ -73,9 +74,9 @@ function setMasterVolumeForMode(mode) {
 
 export function getMusicVolume() {
   const raw = localStorage.getItem(STORAGE_MUSIC_VOLUME);
-  if (raw == null || raw === '') return 1;
+  if (raw == null || raw === '') return DEFAULT_MUSIC_VOLUME;
   const n = Number(raw);
-  if (!Number.isFinite(n)) return 1;
+  if (!Number.isFinite(n)) return DEFAULT_MUSIC_VOLUME;
   return Math.max(0, Math.min(1, n));
 }
 

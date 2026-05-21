@@ -29,13 +29,15 @@ import {
   HOVER_SOUND_CATEGORIES,
   getHoverSoundCategory,
   getHoverSoundMode,
+  getHoverSoundVolumePercent,
   initModuleCardSounds,
   setHoverSoundCategory,
-  setHoverSoundMode
+  setHoverSoundMode,
+  setHoverSoundVolume
 } from './ui-sounds.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = '8';
+const PANEL_VERSION = '9';
 
 function panelIsCurrent(panel) {
   return (
@@ -43,7 +45,8 @@ function panelIsCurrent(panel) {
     panel.querySelector('[data-skin]') &&
     panel.querySelector('[data-corporate-appearance]') &&
     panel.querySelector('[data-module-layout]') &&
-    panel.querySelector('[data-music-volume]')
+    panel.querySelector('[data-music-volume]') &&
+    panel.querySelector('[data-hover-sound-volume]')
   );
 }
 
@@ -203,6 +206,20 @@ function buildPanel() {
             `<button type="button" class="cheat-panel__sound-btn" data-hover-sound="${cat.id}">${cat.label}</button>`
         ).join('')}
       </div>
+      <label class="cheat-panel__volume" for="cheat-hover-sound-volume">
+        <span class="cheat-panel__volume-label">Volume</span>
+        <input
+          type="range"
+          class="cheat-panel__volume-slider"
+          id="cheat-hover-sound-volume"
+          data-hover-sound-volume
+          min="0"
+          max="100"
+          step="1"
+          value="${getHoverSoundVolumePercent()}"
+        />
+        <span class="cheat-panel__volume-value" data-hover-sound-volume-label>${getHoverSoundVolumePercent()}%</span>
+      </label>
       <p class="cheat-panel__sound-note">Random: new file from the category on every hover. Same: one fixed file per category.</p>
     </section>
     ${
@@ -298,6 +315,16 @@ function syncPanelUi(panel) {
     btn.classList.toggle('is-active', btn.dataset.hoverSoundMode === hoverMode);
   });
 
+  const hoverOff = hoverSound === 'off';
+  const hoverVolumePct = getHoverSoundVolumePercent();
+  const hoverVolumeSlider = panel.querySelector('[data-hover-sound-volume]');
+  const hoverVolumeLabel = panel.querySelector('[data-hover-sound-volume-label]');
+  if (hoverVolumeSlider) {
+    hoverVolumeSlider.value = String(hoverVolumePct);
+    hoverVolumeSlider.disabled = hoverOff;
+  }
+  if (hoverVolumeLabel) hoverVolumeLabel.textContent = `${hoverVolumePct}%`;
+
   const moduleLayout = getModuleLayout();
   panel.querySelectorAll('[data-module-layout]').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.moduleLayout === moduleLayout);
@@ -309,13 +336,18 @@ function setPanelOpen(panel, open) {
   panel.hidden = !open;
 }
 
-/** Hidden trigger: chapter title on workflow intro (no affordance in UI). */
-function wireSecretChapterTrigger() {
-  const triggers = document.querySelectorAll('.intro-chapter, .intro-corporate-board__title');
-  triggers.forEach((el) => {
+const CHEAT_PANEL_TRIGGERS =
+  '.intro-chapter, .intro-corporate-board__title, .intro-corporate-nav__item[data-volume="1"]';
+
+/** Hidden trigger: Volume 1 nav, chapter title, space intro chapter (no affordance in UI). */
+export function wireSecretChapterTrigger() {
+  document.querySelectorAll(CHEAT_PANEL_TRIGGERS).forEach((el) => {
     if (el.dataset.cheatTrigger === '1') return;
     el.dataset.cheatTrigger = '1';
-    el.addEventListener('click', () => toggleCheatPanel());
+    el.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleCheatPanel();
+    });
   });
 }
 
@@ -439,6 +471,14 @@ function wirePanel(panel) {
     });
   });
 
+  const hoverVolumeSlider = panel.querySelector('[data-hover-sound-volume]');
+  const hoverVolumeLabel = panel.querySelector('[data-hover-sound-volume-label]');
+  hoverVolumeSlider?.addEventListener('input', () => {
+    const pct = Number(hoverVolumeSlider.value);
+    if (hoverVolumeLabel) hoverVolumeLabel.textContent = `${pct}%`;
+    setHoverSoundVolume(pct / 100);
+  });
+
   window.addEventListener('wf-hover-sound-change', () => syncPanelUi(panel));
 
   panel.querySelector('[data-unlock-all-progress]')?.addEventListener('click', () => {
@@ -458,6 +498,7 @@ function onPageShow(event) {
     const fresh = buildPanel();
     wirePanel(fresh);
     syncPanelUi(fresh);
+    wireSecretChapterTrigger();
   }
 }
 

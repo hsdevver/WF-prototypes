@@ -1,4 +1,6 @@
+import { wireSecretChapterTrigger } from './cheat-panel.js';
 import { initIntroActivityLog, recordPlayActivity } from './intro-activity-log.js';
+import { initTheme } from './theme.js';
 import { initAmbientMusicSync, initAmbientPlayback } from './ambient-music.js';
 import {
   anchorFromRect,
@@ -8,8 +10,17 @@ import {
   edgeKey,
   subwayCordPathD
 } from './cord-paths.js';
-import { hasPerfectStars, starsForModule } from './empathy-score.js';
-import { CHAPTER_1_END_MODULE_ID, getChapterAriaLabel } from './consequence-flow.js';
+import {
+  EMPATHY_SCORE_CEIL,
+  EMPATHY_SCORE_FLOOR,
+  hasPerfectStars,
+  starsForModule
+} from './empathy-score.js';
+import {
+  CHAPTER_1_END_MODULE_ID,
+  getChapterAriaLabel,
+  MODULE_SKILL_FOCUS
+} from './consequence-flow.js';
 import {
   applyPlayOutcome,
   beginChapter2,
@@ -123,6 +134,14 @@ function applyModuleScatter(wrap, moduleId) {
   wrap.style.setProperty('--scatter-y', `${s.y}px`);
   wrap.style.setProperty('--scatter-rotate', `${s.r}deg`);
   wrap.style.setProperty('--float-delay', ((cordPhaseOffset(moduleId) % 40) / 10).toFixed(2));
+  wrap.style.setProperty(
+    '--float-duration',
+    (3.6 + (cordPhaseOffset(`${moduleId}-dur`) % 28) / 10).toFixed(2)
+  );
+  wrap.style.setProperty(
+    '--float-amp',
+    (2 + (cordPhaseOffset(`${moduleId}-amp`) % 35) / 10).toFixed(2)
+  );
   if (s.z) wrap.style.zIndex = String(s.z);
 }
 
@@ -142,7 +161,8 @@ const INTRO_SPACE = {
   dollyEnd: 0.78,
   chapterRevealStart: 0.28,
   chapterRevealEnd: 0.78,
-  modulesCameraStart: 0.92,
+  /** Keep camera on the chapter beat; modules pop in place (no second pan to path-map center). */
+  modulesCameraStart: 1,
   modulesSettleDelayMs: 1600,
   moduleStaggerMs: 180,
   /** Scroll progress after dollyEnd that reveals modules (mirrors delay + stagger). */
@@ -153,8 +173,7 @@ const INTRO_SPACE = {
     { progressEnd: 0.1, durationMs: 4200 },
     { progressEnd: 0.78, durationMs: 10_500 },
     { progressEnd: 0.78, durationMs: 1600, hold: true },
-    { progressEnd: 0.92, durationMs: 6 * 180 + 120 },
-    { progressEnd: 1, durationMs: 800 }
+    { progressEnd: 1, durationMs: 6 * 180 + 120 + 400 }
   ]
 };
 
@@ -205,6 +224,29 @@ const CORPORATE_POP = {
   moduleStaggerMs: 140
 };
 
+const CORPORATE_VOLUME_COPY = {
+  1: {
+    title: 'Volume 1: Getting started',
+    lead:
+      'Your walk-through for this volume—what each module is for, how they connect, and what to try first. Same energy as the laminated sheet by the copier: read once, then you’re set.'
+  },
+  2: {
+    title: 'Volume 2: Almost a pro',
+    lead:
+      'Shorter lane, sharper pacing—three modules in a row. Your choices branch less; the tubes stay lit as you move.'
+  }
+};
+
+const CORPORATE_HANDOFF = {
+  cordShineMs: 650,
+  pathSlamMs: 720,
+  navWiggleMs: 380,
+  navSlamMs: 520,
+  mainExitMs: 780,
+  mainEnterMs: 820,
+  moduleStaggerMs: 130
+};
+
 function shouldFreezeModuleReveal() {
   return Boolean(
     introState.pluggingEdge ||
@@ -249,7 +291,8 @@ function cordAnchorsForKey(key) {
 }
 
 function setActiveChapter(chapter) {
-  if (chapter === 2) {
+  const board = document.getElementById('intro-corporate-board');
+  if (chapter === 2 && !isCorporateSkin()) {
     gridEl = document.getElementById('intro-columns-c2');
     pathMapEl = document.getElementById('intro-path-map-c2');
     connectorsEl = document.getElementById('intro-connectors-c2');
@@ -259,6 +302,9 @@ function setActiveChapter(chapter) {
     pathMapEl = document.getElementById('intro-path-map');
     connectorsEl = document.getElementById('intro-connectors');
     chapterEl = chapterSection1?.querySelector('.intro-chapter') ?? null;
+  }
+  if (isCorporateSkin()) {
+    board?.classList.toggle('is-volume-2', chapter === 2);
   }
 }
 
@@ -333,15 +379,161 @@ function onModuleProgress(unlockedIds, moduleId) {
     queueIntroCordLayout();
   }
   highlightUnlockedModules(unlockedIds);
+  refreshLeaderboardPanel();
+  syncPlayerProfile();
   startCordFloat();
   maybeStartChapterHandoff(moduleId);
 }
 
 function maybeStartChapterHandoff(moduleId) {
-  if (!chapterSection2) return;
   if (moduleId !== CHAPTER_1_END_MODULE_ID) return;
   if (!isChapter1Complete() || isChapterHandoffDone() || introState.handoffRunning) return;
+  if (isCorporateSkin()) {
+    window.setTimeout(() => runCorporateChapterHandoff(), 480);
+    return;
+  }
+  if (!chapterSection2) return;
   window.setTimeout(() => runChapterHandoff(), 480);
+}
+
+function getCorporateNavItem(volume) {
+  return document.querySelector(`.intro-corporate-nav__item[data-volume="${volume}"]`);
+}
+
+function updateCorporateVolumeCopy(volume) {
+  const copy = CORPORATE_VOLUME_COPY[volume];
+  const board = document.getElementById('intro-corporate-board');
+  const title = board?.querySelector('.intro-corporate-board__title');
+  const lead = board?.querySelector('.intro-corporate-board__lead');
+  if (copy?.title && title) title.textContent = copy.title;
+  if (copy?.lead && lead) lead.textContent = copy.lead;
+}
+
+function activateCorporateVolumeNav(volume) {
+  const nav = document.querySelector('.intro-corporate-nav');
+  nav?.querySelectorAll('.intro-corporate-nav__item').forEach((btn) => {
+    const v = Number(btn.dataset.volume);
+    if (!v) return;
+    btn.classList.toggle('is-active', v === volume);
+    btn.classList.toggle('is-complete', v < volume);
+    if (v === volume) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+  });
+
+  const item = getCorporateNavItem(volume);
+  if (!item) return;
+  item.disabled = false;
+  item.classList.remove('is-locked');
+  item.setAttribute('aria-label', `Volume ${volume}`);
+  item.querySelector('.intro-corporate-nav__lock')?.remove();
+}
+
+function finishCorporateHandoffContent() {
+  const board = document.getElementById('intro-corporate-board');
+  const vol1Nav = getCorporateNavItem(1);
+  vol1Nav?.classList.remove('is-active');
+  vol1Nav?.classList.add('is-complete');
+  vol1Nav?.removeAttribute('aria-current');
+
+  beginChapter2();
+  setActiveChapter(2);
+  updateCorporateVolumeCopy(2);
+  renderModules();
+  applyCorporateModuleGridLayout();
+  activateCorporateVolumeNav(2);
+  board?.classList.add('is-pop-complete');
+  gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+    wrap.classList.remove('is-revealed', 'is-pop-visible');
+  });
+}
+
+async function revealCorporateVolume2Modules() {
+  const modules = getRuntimeModules();
+  for (const mod of modules) {
+    const wrap = gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`);
+    if (!wrap) continue;
+    wrap.classList.add('is-revealed', 'is-pop-visible');
+    if (!introState.moduleSoundsPlayed.has(mod.id)) {
+      introState.moduleSoundsPlayed.add(mod.id);
+      playModuleHoverClick({ bypassThrottle: true });
+    }
+    await delayMs(CORPORATE_HANDOFF.moduleStaggerMs);
+  }
+}
+
+async function runCorporateChapterHandoff() {
+  if (!isCorporateSkin() || introState.handoffRunning || isChapterHandoffDone()) return;
+  introState.handoffRunning = true;
+  clearModulePathHover();
+  document.documentElement.classList.add('is-corporate-handoff', 'is-intro-handoff');
+  stopCordFloat();
+  stopIntroAuto();
+
+  const board = document.getElementById('intro-corporate-board');
+  const body = board?.querySelector('.intro-corporate-board__body');
+  const main = board?.querySelector('.intro-corporate-board__main');
+  const pathMap = document.getElementById('intro-path-map');
+  const connectors = document.getElementById('intro-connectors');
+  const vol2Nav = getCorporateNavItem(2);
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    finishCorporateHandoffContent();
+    queueIntroCordLayout();
+    startCordFloat();
+    introState.handoffRunning = false;
+    document.documentElement.classList.remove('is-corporate-handoff', 'is-intro-handoff');
+    return;
+  }
+
+  body?.classList.add('is-handoff-active');
+
+  connectors?.classList.add('is-volume-complete-glow');
+  pathMap?.classList.add('is-cord-shine');
+  await delayMs(CORPORATE_HANDOFF.cordShineMs);
+
+  pathMap?.classList.add('is-chapter-path-slam');
+  await delayMs(CORPORATE_HANDOFF.pathSlamMs);
+  pathMap?.classList.remove('is-chapter-path-slam', 'is-cord-shine');
+  connectors?.classList.remove('is-volume-complete-glow');
+
+  if (vol2Nav) {
+    vol2Nav.classList.add('is-nav-unlocking');
+    await delayMs(CORPORATE_HANDOFF.navWiggleMs);
+    vol2Nav.classList.add('is-nav-slamming');
+    await delayMs(CORPORATE_HANDOFF.navSlamMs);
+    activateCorporateVolumeNav(2);
+    vol2Nav.classList.remove('is-nav-unlocking', 'is-nav-slamming');
+  }
+
+  main?.classList.add('is-main-exiting');
+  await delayMs(CORPORATE_HANDOFF.mainExitMs);
+
+  finishCorporateHandoffContent();
+  main?.classList.remove('is-main-exiting');
+  main?.classList.add('is-main-entering');
+  await revealCorporateVolume2Modules();
+  await delayMs(CORPORATE_HANDOFF.mainEnterMs);
+  main?.classList.remove('is-main-entering');
+
+  body?.classList.remove('is-handoff-active');
+  queueIntroCordLayout();
+  startCordFloat();
+  introState.handoffRunning = false;
+  document.documentElement.classList.remove('is-corporate-handoff', 'is-intro-handoff');
+}
+
+function bootstrapCorporateChapter2View() {
+  const board = document.getElementById('intro-corporate-board');
+  if (!board || !gridEl) return;
+  introState.complete = true;
+  viewport?.classList.add('is-chapter-2-active', 'is-chapter-settled', 'is-modules-visible');
+  finishCorporateHandoffContent();
+  getRuntimeModules().forEach((mod) => {
+    gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`)?.classList.add('is-revealed', 'is-pop-visible');
+  });
+  board.classList.add('is-pop-complete');
+  startCordFloat();
+  queueIntroCordLayout();
 }
 
 function panCameraToY(targetY, durationMs) {
@@ -399,6 +591,7 @@ function revealChapter2Modules() {
 async function runChapterHandoff() {
   if (introState.handoffRunning || isChapterHandoffDone()) return;
   introState.handoffRunning = true;
+  clearModulePathHover();
   document.documentElement.classList.add('is-intro-handoff');
   stopCordFloat();
   stopIntroAuto();
@@ -600,7 +793,11 @@ function renderModules() {
 
     wrap.appendChild(card);
     gridEl.appendChild(wrap);
+    bindModulePathHover(wrap, mod.id);
   });
+
+  wireModulePathHoverMap();
+  if (isCorporateSkin()) syncPlayerProfile();
 
   if (isCorporateSkin()) {
     applyCorporateModuleGridLayout();
@@ -618,8 +815,58 @@ function delayMs(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-/** Same player score in every scope — only rank context and neighbours change. */
-const LEADERBOARD_YOUR_PTS = '2,480';
+/** Canonical player points — profile + every leaderboard scope use the same value. */
+const LEADERBOARD_BASE_PTS = 2480;
+
+function yourPlayerPoints() {
+  return LEADERBOARD_BASE_PTS;
+}
+
+function formatYourPts() {
+  return yourPlayerPoints().toLocaleString('en-US');
+}
+
+const PLAYER_DISPLAY_NAME = 'You';
+
+const SKILL_FEEDBACK = {
+  empathy: {
+    focus:
+      'Before you choose, name what the other person might be feeling—one sentence is enough to steady your next move.',
+    strength: 'You stay present when lanes split; you rarely rush past a scored moment without landing it.'
+  },
+  ownership: {
+    focus:
+      'On the next module, call out one thing you will own end-to-end—even a small follow-up counts on this path.',
+    strength: 'You close loops once a branch opens; check-ins and hub clears show you finish what you start.'
+  },
+  communication: {
+    focus:
+      'Draft your opener out loud before you play again—clarity at the start saves rework on the merge lanes.',
+    strength: 'Orientation and straight-ahead runs read clean; you set context before the team moves.'
+  }
+};
+
+const SKILL_DEFAULT_FEEDBACK = {
+  focus: 'Play your first scored module to unlock coaching notes tailored to your runs.',
+  strength: 'Showing up on the path counts—finish a module to see what to keep doing.'
+};
+
+const LEADERBOARD_SCOPE_ORDER = { department: 0, starclub: 1, company: 2 };
+
+const STARCLUB_PEER_NAMES = [
+  'Jamie Kim',
+  'Elena Voss',
+  'Marcus Chen',
+  'Priya Nair',
+  'Jonas Lind',
+  'Sofia Ruiz',
+  'Alex Morgan',
+  'N. Okonkwo',
+  'M. Laurent',
+  'R. Patel',
+  'S. Nguyen',
+  'L. Bergström'
+];
 
 const LEADERBOARD_SCOPES = {
   department: {
@@ -631,7 +878,7 @@ const LEADERBOARD_SCOPES = {
       { rank: 3, name: 'Elena Voss', pts: '2,840' },
       { rank: 4, name: 'Marcus Chen', pts: '2,710' },
       { rank: 5, name: 'Priya Nair', pts: '2,590' },
-      { rank: 6, name: 'You', pts: LEADERBOARD_YOUR_PTS, you: true },
+      { rank: 6, name: 'You', pts: '', you: true },
       { rank: 7, name: 'Jonas Lind', pts: '2,350' },
       { rank: 8, name: 'Sofia Ruiz', pts: '2,210' },
       { rank: 9, name: 'Alex Morgan', pts: '2,095', peek: true }
@@ -647,13 +894,169 @@ const LEADERBOARD_SCOPES = {
       { rank: 138, name: 'R. Patel', pts: '4,420' },
       { rank: 139, name: 'S. Nguyen', pts: '3,890' },
       { rank: 140, name: 'L. Bergström', pts: '3,210' },
-      { rank: 141, name: 'You', pts: LEADERBOARD_YOUR_PTS, you: true },
+      { rank: 141, name: 'You', pts: '', you: true },
       { rank: 142, name: 'K. Okafor', pts: '2,050' },
       { rank: 143, name: 'T. Mensah', pts: '1,640' },
       { rank: 144, name: 'A. Dubois', pts: '980', peek: true }
     ]
   }
 };
+
+function totalStarsCollected() {
+  return getRuntimeModules().reduce((sum, mod) => {
+    if (mod.locked) return sum;
+    return sum + starsForModule(mod);
+  }, 0);
+}
+
+function moduleSkillSample(mod) {
+  if (mod.locked) return null;
+  const played = mod.completed || mod.empathyScore != null;
+  if (!played) return null;
+
+  if (mod.empathyScore != null) {
+    const clamped = Math.max(
+      EMPATHY_SCORE_FLOOR,
+      Math.min(EMPATHY_SCORE_CEIL, Math.round(mod.empathyScore))
+    );
+    return Math.round(
+      ((clamped - EMPATHY_SCORE_FLOOR) / (EMPATHY_SCORE_CEIL - EMPATHY_SCORE_FLOOR)) * 100
+    );
+  }
+  if (mod.completed) return 88;
+  return null;
+}
+
+function aggregatePlayerSkills() {
+  const buckets = { empathy: [], ownership: [], communication: [] };
+  for (const mod of getRuntimeModules()) {
+    const skill = MODULE_SKILL_FOCUS[mod.id];
+    const sample = moduleSkillSample(mod);
+    if (!skill || sample == null) continue;
+    buckets[skill].push(sample);
+  }
+
+  const average = (values) =>
+    values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : null;
+
+  return {
+    empathy: average(buckets.empathy),
+    ownership: average(buckets.ownership),
+    communication: average(buckets.communication)
+  };
+}
+
+function feedbackForSkills(skills) {
+  const entries = Object.entries(skills).filter(([, value]) => value != null);
+  if (!entries.length) return SKILL_DEFAULT_FEEDBACK;
+
+  const sorted = [...entries].sort((a, b) => a[1] - b[1]);
+  const lowest = sorted[0][0];
+  const highest = sorted[sorted.length - 1][0];
+  return {
+    focus: SKILL_FEEDBACK[lowest]?.focus ?? SKILL_DEFAULT_FEEDBACK.focus,
+    strength: SKILL_FEEDBACK[highest]?.strength ?? SKILL_DEFAULT_FEEDBACK.strength
+  };
+}
+
+function syncPlayerProfile() {
+  const profile = document.getElementById('intro-corporate-player-profile');
+  const feedback = document.getElementById('intro-corporate-feedback');
+  if (!profile) return;
+
+  const stars = totalStarsCollected();
+  const score = yourPlayerPoints();
+  const skills = aggregatePlayerSkills();
+  const coaching = feedbackForSkills(skills);
+
+  const nameEl = profile.querySelector('[data-player-name]');
+  if (nameEl) nameEl.textContent = PLAYER_DISPLAY_NAME;
+
+  const scoreEl = profile.querySelector('[data-player-score]');
+  if (scoreEl) scoreEl.textContent = score.toLocaleString('en-US');
+
+  const starsEl = profile.querySelector('[data-player-stars]');
+  if (starsEl) {
+    starsEl.textContent = stars === 1 ? '1 ★' : `${stars} ★`;
+  }
+
+  for (const skill of ['empathy', 'ownership', 'communication']) {
+    const value = skills[skill];
+    const pctEl = profile.querySelector(`[data-skill-pct="${skill}"]`);
+    const fillEl = profile.querySelector(`[data-skill-fill="${skill}"]`);
+    if (pctEl) pctEl.textContent = value == null ? '—' : `${value}%`;
+    if (fillEl) fillEl.style.width = value == null ? '0%' : `${value}%`;
+  }
+
+  const focusEl = feedback?.querySelector('[data-feedback-focus]');
+  if (focusEl) focusEl.textContent = coaching.focus;
+  const strengthEl = feedback?.querySelector('[data-feedback-strength]');
+  if (strengthEl) strengthEl.textContent = coaching.strength;
+
+  refreshLeaderboardPanel();
+}
+
+function formatLeaderboardPts(pts) {
+  return Math.round(pts).toLocaleString('en-US');
+}
+
+function generateStarclubPeers(starCount, yourPts) {
+  const peers = [];
+  const count = 11;
+  for (let i = 0; i < count; i++) {
+    let n = 0;
+    const key = `starclub|${starCount}|${i}`;
+    for (let j = 0; j < key.length; j++) n += key.charCodeAt(j);
+    const spread = (n % 701) - 350 + (i - Math.floor(count / 2)) * 32;
+    peers.push({
+      name: STARCLUB_PEER_NAMES[i % STARCLUB_PEER_NAMES.length],
+      pts: Math.max(120, yourPts + spread)
+    });
+  }
+  return peers;
+}
+
+function buildStarclubLeaderboard() {
+  const stars = totalStarsCollected();
+  const yourPts = yourPlayerPoints();
+  const peers = generateStarclubPeers(stars, yourPts);
+  const ranked = [...peers, { name: 'You', pts: yourPts, you: true }].sort((a, b) => b.pts - a.pts);
+
+  const youIdx = ranked.findIndex((entry) => entry.you);
+  const start = Math.max(0, youIdx - 3);
+  const end = Math.min(ranked.length, youIdx + 4);
+  const window = ranked.slice(start, end);
+
+  const rows = window.map((entry, i) => ({
+    rank: start + i + 1,
+    name: entry.name,
+    pts: formatLeaderboardPts(entry.pts),
+    you: entry.you,
+    peek: (i === 0 && start > 0) || (i === window.length - 1 && end < ranked.length)
+  }));
+
+  const clubSize = 18 + stars * 7;
+  const starLabel = stars === 1 ? '1 star' : `${stars} stars`;
+
+  return {
+    label: `Star club · ${starLabel}`,
+    aria: `Star club — players with ${starLabel} collected`,
+    more: `${clubSize} players at ${stars} stars`,
+    rows
+  };
+}
+
+function applyYourPtsToRows(rows) {
+  const pts = formatYourPts();
+  return rows.map((row) => (row.you ? { ...row, pts } : row));
+}
+
+function leaderboardScopeData(scope) {
+  if (scope === 'starclub') return buildStarclubLeaderboard();
+  const data = LEADERBOARD_SCOPES[scope];
+  if (!data) return null;
+  return { ...data, rows: applyYourPtsToRows(data.rows) };
+}
 
 function buildLeaderboardRow(entry, staggerIndex) {
   const li = document.createElement('li');
@@ -667,22 +1070,34 @@ function buildLeaderboardRow(entry, staggerIndex) {
     li.removeAttribute('aria-hidden');
   }
   li.style.setProperty('--lb-stagger', String(staggerIndex));
+  const ptsClass = entry.ptsTone
+    ? ` intro-corporate-leaderboard__pts--${entry.ptsTone}`
+    : '';
   li.innerHTML = `
     <span class="intro-corporate-leaderboard__rank">${entry.rank}</span>
     <span class="intro-corporate-leaderboard__name">${entry.name}</span>
-    <span class="intro-corporate-leaderboard__pts">${entry.pts}</span>
+    <span class="intro-corporate-leaderboard__pts${ptsClass}">${entry.pts}</span>
   `;
   return li;
 }
 
 function renderLeaderboardRows(listEl, scope) {
-  const data = LEADERBOARD_SCOPES[scope];
+  const data = leaderboardScopeData(scope);
   if (!listEl || !data) return;
   listEl.replaceChildren(...data.rows.map((row, index) => buildLeaderboardRow(row, index)));
 }
 
+function refreshLeaderboardPanel() {
+  const panel = document.getElementById('intro-corporate-leaderboard');
+  const scope = panel?.dataset.leaderboardScope || 'department';
+  const listEl = panel?.querySelector('.intro-corporate-leaderboard__list');
+  if (!panel || !listEl || !LEADERBOARD_SCOPE_ORDER[scope]) return;
+  renderLeaderboardRows(listEl, scope);
+  applyLeaderboardScopeMeta(panel, scope);
+}
+
 function applyLeaderboardScopeMeta(panel, scope) {
-  const copy = LEADERBOARD_SCOPES[scope];
+  const copy = leaderboardScopeData(scope);
   if (!panel || !copy) return;
   const labelEl = panel.querySelector('[data-leaderboard-scope-label]');
   const moreEl = panel.querySelector('[data-leaderboard-more]');
@@ -698,11 +1113,12 @@ async function setLeaderboardScope(panel, scope, { animate = true } = {}) {
   const scopes = document.querySelector('.intro-corporate-leaderboard-scopes');
   if (!panel || !listEl) return;
 
-  const current = panel.dataset.leaderboardScope === 'company' ? 'company' : 'department';
+  const current = panel.dataset.leaderboardScope || 'department';
   if (current === scope || panel.dataset.leaderboardAnimating === '1') return;
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const goingDown = scope === 'company';
+  const goingDown =
+    (LEADERBOARD_SCOPE_ORDER[scope] ?? 0) > (LEADERBOARD_SCOPE_ORDER[current] ?? 0);
 
   panel.dataset.leaderboardAnimating = '1';
   scopes?.querySelectorAll('[data-scope]').forEach((b) => {
@@ -745,7 +1161,8 @@ function wireLeaderboardScopes() {
 
   scopes.querySelectorAll('[data-scope]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const scope = btn.dataset.scope === 'company' ? 'company' : 'department';
+      const scope = btn.dataset.scope;
+      if (!scope || !LEADERBOARD_SCOPE_ORDER[scope]) return;
 
       scopes.querySelectorAll('[data-scope]').forEach((b) => {
         const active = b === btn;
@@ -763,6 +1180,8 @@ function tagCorporatePopTargets() {
   if (!board) return;
   board.querySelector('.intro-corporate-nav')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-board__copy')?.classList.add('intro-corporate-pop-target');
+  board.querySelector('.intro-corporate-player-profile')?.classList.add('intro-corporate-pop-target');
+  board.querySelector('.intro-corporate-feedback')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-leaderboard-panel')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-activity')?.classList.add('intro-corporate-pop-target');
   gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
@@ -805,6 +1224,8 @@ function revealCorporateBoard() {
   introState.chapterSettledAt = introState.chapterSettledAt ?? performance.now();
   introState.progress = 1;
   applyCorporateModuleGridLayout();
+  syncPlayerProfile();
+  wireSecretChapterTrigger();
   startCordFloat();
   queueIntroCordLayout();
 }
@@ -858,6 +1279,14 @@ async function runCorporatePopSequence() {
     wrap.classList.add('is-pop-visible', 'is-revealed');
     await delayMs(CORPORATE_POP.moduleStaggerMs);
   }
+
+  const profile = board.querySelector('.intro-corporate-player-profile');
+  const feedbackCard = board.querySelector('.intro-corporate-feedback');
+  await popCorporateTarget(profile, runId);
+  if (runId !== corporatePopRun) return;
+
+  await popCorporateTarget(feedbackCard, runId);
+  if (runId !== corporatePopRun) return;
 
   await popCorporateTarget(leaderboard, runId);
   if (runId !== corporatePopRun) return;
@@ -966,8 +1395,12 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
     targetWrap?.classList.remove('is-plug-target');
     hideCordTooltip();
 
+    const runtimeBefore = getRuntimeModule(sourceMod.id) ?? sourceMod;
+    const wasPlayed = Boolean(runtimeBefore.completed);
     const newlyUnlocked = applyPlayOutcome(sourceMod.id, outcome);
-    recordPlayActivity(getRuntimeModule(sourceMod.id) ?? sourceMod, outcome, newlyUnlocked);
+    recordPlayActivity(runtimeBefore, outcome, newlyUnlocked, {
+      playMode: wasPlayed ? 'replayed' : 'live'
+    });
     patchModulesFromRuntime(newlyUnlocked);
     highlightUnlockedModules(newlyUnlocked);
     focusModuleCard(targetId);
@@ -1099,6 +1532,9 @@ let cordFloatRaf = 0;
 let cordFloatPhase = 0;
 let cordTooltipEl = null;
 let cordTooltipHideTimer = 0;
+let modulePathHoverId = null;
+let modulePathHoverClearTimer = 0;
+const pathHoverTooltips = new Map();
 
 const CORD_TOOLTIP_HIDE_MS = 400;
 
@@ -1133,6 +1569,164 @@ function hideCordTooltip() {
       cordTooltipEl.hidden = true;
     }
   }, 200);
+}
+
+/** All edge keys on routes that lead into `moduleId` (walk backward through the graph). */
+function getEdgesLeadingTo(moduleId) {
+  const keys = new Set();
+  const byTarget = new Map();
+  for (const [from, to] of getChapterEdges()) {
+    if (!byTarget.has(to)) byTarget.set(to, []);
+    byTarget.get(to).push(from);
+  }
+
+  const queue = [moduleId];
+  const seen = new Set([moduleId]);
+  while (queue.length) {
+    const to = queue.shift();
+    for (const from of byTarget.get(to) ?? []) {
+      keys.add(edgeKey(from, to));
+      if (!seen.has(from)) {
+        seen.add(from);
+        queue.push(from);
+      }
+    }
+  }
+  return keys;
+}
+
+function ensurePathHoverTooltipLayer() {
+  if (!pathMapEl) return null;
+  let layer = pathMapEl.querySelector('.intro-path-hover-tooltips');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'intro-path-hover-tooltips';
+    layer.setAttribute('aria-hidden', 'true');
+    pathMapEl.appendChild(layer);
+  }
+  return layer;
+}
+
+function hidePathHoverTooltips() {
+  for (const el of pathHoverTooltips.values()) {
+    el.classList.remove('is-visible');
+    el.hidden = true;
+  }
+}
+
+function cordMidpointForTooltip(seg) {
+  const body =
+    seg.centerlinePath ?? seg.paths?.find((p) => p.classList.contains('intro-cord-rope--active'));
+  if (!body) return null;
+  const len = body.getTotalLength();
+  if (!len) return null;
+  return body.getPointAtLength(len * 0.42);
+}
+
+function showPathHoverTooltipsForEdges(edgeKeys) {
+  const layer = ensurePathHoverTooltipLayer();
+  if (!layer) return;
+  hideCordTooltip();
+
+  const activeKeys = new Set();
+  for (const seg of cordRopeSegments) {
+    if (!edgeKeys.has(seg.key)) continue;
+    const label = getEdgeChoiceLabel(seg.key);
+    if (!label) continue;
+
+    const pt = cordMidpointForTooltip(seg);
+    if (!pt) continue;
+
+    activeKeys.add(seg.key);
+    let el = pathHoverTooltips.get(seg.key);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'intro-cord-tooltip intro-cord-tooltip--path-hover';
+      el.setAttribute('role', 'tooltip');
+      layer.appendChild(el);
+      pathHoverTooltips.set(seg.key, el);
+    }
+    el.textContent = label;
+    el.style.left = `${pt.x}px`;
+    el.style.top = `${pt.y}px`;
+    el.hidden = false;
+    requestAnimationFrame(() => el.classList.add('is-visible'));
+  }
+
+  for (const [key, el] of pathHoverTooltips) {
+    if (activeKeys.has(key)) continue;
+    el.classList.remove('is-visible');
+    el.hidden = true;
+  }
+}
+
+function clearModulePathHover() {
+  clearTimeout(modulePathHoverClearTimer);
+  modulePathHoverClearTimer = 0;
+  modulePathHoverId = null;
+  pathMapEl?.classList.remove('is-module-path-hover');
+  pathMapEl?.removeAttribute('data-path-hover-module');
+  connectorsEl?.querySelectorAll('.intro-cord.is-path-highlight').forEach((cord) => {
+    cord.classList.remove('is-path-highlight');
+  });
+  hidePathHoverTooltips();
+}
+
+function setModulePathHover(moduleId) {
+  if (!moduleId || introState.plugActive || introState.pluggingEdge || introState.handoffRunning) {
+    clearModulePathHover();
+    return;
+  }
+
+  clearTimeout(modulePathHoverClearTimer);
+  modulePathHoverClearTimer = 0;
+
+  if (modulePathHoverId === moduleId) return;
+  modulePathHoverId = moduleId;
+
+  const edgeKeys = getEdgesLeadingTo(moduleId);
+  pathMapEl?.classList.add('is-module-path-hover');
+  pathMapEl?.setAttribute('data-path-hover-module', moduleId);
+
+  connectorsEl?.querySelectorAll('.intro-cord').forEach((cord) => {
+    const key = cord.dataset.edge;
+    cord.classList.toggle('is-path-highlight', edgeKeys.has(key));
+  });
+
+  showPathHoverTooltipsForEdges(edgeKeys);
+}
+
+function scheduleClearModulePathHover() {
+  clearTimeout(modulePathHoverClearTimer);
+  modulePathHoverClearTimer = window.setTimeout(() => {
+    modulePathHoverClearTimer = 0;
+    clearModulePathHover();
+  }, 40);
+}
+
+function bindModulePathHover(wrap, moduleId) {
+  const onEnter = () => setModulePathHover(moduleId);
+  const onLeave = (e) => {
+    const related = e.relatedTarget;
+    if (related && (wrap.contains(related) || pathMapEl?.contains(related))) return;
+    scheduleClearModulePathHover();
+  };
+
+  wrap.addEventListener('mouseenter', onEnter);
+  wrap.addEventListener('mouseleave', onLeave);
+  wrap.addEventListener('focusin', onEnter);
+  wrap.addEventListener('focusout', onLeave);
+}
+
+function wireModulePathHoverMap() {
+  if (!pathMapEl || pathMapEl.dataset.pathHoverWired) return;
+  pathMapEl.dataset.pathHoverWired = '1';
+
+  pathMapEl.addEventListener('mouseleave', (e) => {
+    const related = e.relatedTarget;
+    if (related?.closest?.('.intro-module-wrap')) return;
+    scheduleClearModulePathHover();
+  });
 }
 
 function showCordTooltip(text, x, y, { persist = false } = {}) {
@@ -1238,6 +1832,7 @@ function bindCordHitTooltip(seg) {
   seg.hitPath.addEventListener('pointercancel', endCordDrag);
   seg.hitPath.addEventListener('pointerleave', () => {
     if (cordDragSeg === seg) return;
+    if (modulePathHoverId) return;
     hideCordTooltip();
   });
 }
@@ -1520,6 +2115,7 @@ function measureIntroCords({ onReady } = {}) {
       }
     }
     if (!introState.pluggingEdge) startCordFloat();
+    if (modulePathHoverId) setModulePathHover(modulePathHoverId);
     onReady?.();
   });
 }
@@ -1534,7 +2130,11 @@ function queueIntroCordLayout() {
     if (isCorporateSkin() && !introState.complete) return;
     if (isCorporateSkin()) applyCorporateModuleGridLayout();
     measureIntroCords();
-    if (introState.progress >= introCfg().dollyEnd && !shouldFreezeModuleReveal()) {
+    if (
+      !introState.autoDriving &&
+      introState.progress >= introCfg().dollyEnd &&
+      !shouldFreezeModuleReveal()
+    ) {
       introState.stops = null;
       applyIntroProgress(introState.progress, { immediate: true });
     }
@@ -1812,16 +2412,19 @@ function applyIntroProgress(raw, { immediate = false } = {}) {
     introState.moduleSoundsPlayed.clear();
   }
 
+  const cfg = introCfg();
   let cameraY = stops.home;
-  if (p >= introCfg().modulesCameraStart) {
-    const span = 1 - introCfg().modulesCameraStart;
-    const t = span > 0 ? Math.min(1, (p - introCfg().modulesCameraStart) / span) : 1;
+  if (cfg.modulesCameraStart < 1 && p >= cfg.modulesCameraStart) {
+    const span = 1 - cfg.modulesCameraStart;
+    const t = span > 0 ? Math.min(1, (p - cfg.modulesCameraStart) / span) : 1;
     cameraY =
       stops.chapterSettled +
       (stops.modulesSettled - stops.chapterSettled) * easeInOutCubic(t);
-  } else if (p >= introCfg().dollyStart) {
-    const span = introCfg().dollyEnd - introCfg().dollyStart;
-    const t = span > 0 ? Math.min(1, (p - introCfg().dollyStart) / span) : 1;
+  } else if (p >= cfg.dollyEnd) {
+    cameraY = stops.chapterSettled;
+  } else if (p >= cfg.dollyStart) {
+    const span = cfg.dollyEnd - cfg.dollyStart;
+    const t = span > 0 ? Math.min(1, (p - cfg.dollyStart) / span) : 1;
     cameraY = stops.home + (stops.chapterSettled - stops.home) * easeInOutCubic(t);
   }
 
@@ -1836,7 +2439,7 @@ function applyIntroProgress(raw, { immediate = false } = {}) {
   viewport.classList.toggle('is-hero-visible', p > 0);
   viewport.classList.toggle(
     'is-camera-moving',
-    p >= introCfg().dollyStart && p < introCfg().modulesCameraStart
+    p >= introCfg().dollyStart && p < introCfg().dollyEnd
   );
   viewport.classList.toggle('is-chapter-settled', p >= introCfg().dollyEnd);
   viewport.classList.toggle('is-modules-visible', revealedCount > 0);
@@ -1901,6 +2504,7 @@ function syncCorporateIntroClass() {
     wireLeaderboardScopes();
     initIntroActivityLog();
     patchModulesFromRuntime();
+    wireSecretChapterTrigger();
   }
 }
 
@@ -1915,6 +2519,7 @@ function runIntroSequence() {
   }
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  introState.stops = null;
   introState.stops = measureCameraStops();
 
   if (reduced) {
@@ -1931,9 +2536,13 @@ function initIntroScrollControl() {
   viewport.addEventListener('wheel', onIntroWheel, { passive: false });
 }
 
+initTheme();
+
 buildStarfield();
 initModuleModal();
+wireModulePathHoverMap();
 renderModules();
+if (isCorporateSkin()) syncPlayerProfile();
 syncCorporateIntroClass();
 initAmbientMusicSync();
 initAmbientPlayback();
@@ -1986,10 +2595,13 @@ window.addEventListener('wf-progress-change', (event) => {
     const unlocked = getRuntimeModules().filter((m) => !m.locked).map((m) => m.id);
     if (getCurrentChapter() === 1 && isCorporateSkin()) revealCorporateBoard();
     patchModulesFromRuntime(unlocked);
+    syncPlayerProfile();
     queueIntroCordLayout();
     return;
   }
   patchModulesFromRuntime(event.detail?.newlyUnlocked ?? []);
+  refreshLeaderboardPanel();
+  syncPlayerProfile();
   queueIntroCordLayout();
 });
 
@@ -2016,7 +2628,8 @@ if (pathMapEl && typeof ResizeObserver !== 'undefined') {
 initIntroScrollControl();
 
 if (getCurrentChapter() === 2 && isChapterHandoffDone()) {
-  bootstrapChapter2View();
+  if (isCorporateSkin()) bootstrapCorporateChapter2View();
+  else bootstrapChapter2View();
 } else {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {

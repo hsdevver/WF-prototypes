@@ -129,15 +129,64 @@ function allModuleIds() {
   return [...ids];
 }
 
-/** Cheat: unlock every module in both chapters; mark chapter handoff done. */
+function edgeKey(from, to) {
+  return `${from}|${to}`;
+}
+
+function simulateFullPlayState() {
+  const filledEdges = [];
+  const lastChoices = {};
+  const lastDirections = {};
+  const edgeLabels = {};
+  const moduleScores = { ...state.moduleScores };
+
+  for (const chapter of [1, 2]) {
+    const graph = getChapterGraph(chapter);
+
+    for (const [from, to] of graph.edges) {
+      const key = edgeKey(from, to);
+      if (!filledEdges.includes(key)) filledEdges.push(key);
+      edgeLabels[key] = edgeLabels[key] ?? 'Completed';
+    }
+
+    for (const [moduleId, scenario] of Object.entries(graph.scenarios)) {
+      const outcome = scenario.outcomes?.[0];
+      if (!outcome) continue;
+      if (outcome.lastChoice) lastChoices[moduleId] = outcome.lastChoice;
+      if (outcome.direction) lastDirections[moduleId] = outcome.direction;
+    }
+
+    for (const mod of graph.modules) {
+      if (!mod.modal?.showStats) continue;
+      if (mod.id === 'm8') {
+        moduleScores[mod.id] = EMPATHY_SCORE_FLOOR;
+      } else {
+        moduleScores[mod.id] = EMPATHY_SCORE_FOUR_STARS;
+      }
+    }
+  }
+
+  return { filledEdges, lastChoices, lastDirections, edgeLabels, moduleScores };
+}
+
+/** Cheat: unlock every module, fill all path tubes, and mark all as played with stars. */
 export function unlockAllConsequenceProgress() {
   const allIds = allModuleIds();
   const before = new Set(state.unlocked);
+  const simulated = simulateFullPlayState();
+
   state.unlocked = allIds;
+  state.completed = [...allIds];
+  state.filledEdges = simulated.filledEdges;
+  state.lastChoices = simulated.lastChoices;
+  state.lastDirections = simulated.lastDirections;
+  state.edgeLabels = simulated.edgeLabels;
+  state.moduleScores = simulated.moduleScores;
   state.chapterHandoffDone = true;
+
   saveState(state);
   const newlyUnlocked = allIds.filter((id) => !before.has(id));
-  notifyChange({ unlockAll: true, newlyUnlocked });
+  notifyChange({ unlockAll: true, newlyUnlocked, simulatedPlay: true });
 }
 
 export function getCurrentChapter() {

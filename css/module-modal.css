@@ -109,6 +109,10 @@
 }
 
 .module-modal__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   padding: 1.1rem 1.25rem 1.25rem;
   overflow-y: auto;
 }
@@ -249,17 +253,24 @@
   transform: translateY(-1px);
 }
 
-.module-modal__panel[data-view='choices'] .module-modal__detail {
+.module-modal__cta {
   display: none;
+}
+
+.module-modal__play {
+  flex-shrink: 0;
+  margin-top: 0.75rem;
 }
 
 .module-modal__actions {
   display: flex;
+  flex-shrink: 0;
   gap: 0.65rem;
+  margin-top: auto;
+  padding-top: 1rem;
 }
 
-.module-modal__back,
-.module-modal__cta {
+.module-modal__back {
   flex: 1;
   min-height: 2.5rem;
   border-radius: 8px;

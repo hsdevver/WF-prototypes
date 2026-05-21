@@ -1,6 +1,7 @@
 export const STORAGE_HOVER_SOUND = 'wf-proto-hover-sound';
 export const STORAGE_HOVER_SOUND_MODE = 'wf-proto-hover-sound-mode';
 export const STORAGE_HOVER_SOUND_PINNED = 'wf-proto-hover-sound-pinned';
+export const STORAGE_HOVER_SOUND_VOLUME = 'wf-proto-hover-sound-volume';
 
 export const HOVER_SOUND_CATEGORIES = [
   { id: 'off', label: 'Off' },
@@ -28,8 +29,9 @@ let hoverAudioEl = null;
 let unlocked = false;
 let lastPlayAt = 0;
 const MIN_INTERVAL_MS = 70;
-const HOVER_VOLUME = 0.42;
-const LOCKED_REJECT_VOLUME = 0.5;
+const BASE_HOVER_VOLUME = 0.42;
+const BASE_LOCKED_REJECT_VOLUME = 0.5;
+const DEFAULT_HOVER_SOUND_VOLUME = 0.42;
 /** Matches workflow-intro.css --stagger-module */
 export const MODULE_REVEAL_STAGGER_MS = 320;
 
@@ -46,6 +48,30 @@ export function getHoverSoundCategory() {
 export function getHoverSoundMode() {
   const mode = localStorage.getItem(STORAGE_HOVER_SOUND_MODE);
   return mode === 'single' ? 'single' : 'random';
+}
+
+export function getHoverSoundVolume() {
+  const raw = localStorage.getItem(STORAGE_HOVER_SOUND_VOLUME);
+  if (raw == null || raw === '') return DEFAULT_HOVER_SOUND_VOLUME;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_HOVER_SOUND_VOLUME;
+  return Math.max(0, Math.min(1, n));
+}
+
+export function getHoverSoundVolumePercent() {
+  return Math.round(getHoverSoundVolume() * 100);
+}
+
+/** @param {number} level 0–1 */
+export function setHoverSoundVolume(level) {
+  const v = Math.max(0, Math.min(1, Number(level)));
+  localStorage.setItem(STORAGE_HOVER_SOUND_VOLUME, String(v));
+  broadcastHoverSoundSettings();
+  return v;
+}
+
+function effectiveHoverVolume(base) {
+  return base * getHoverSoundVolume();
 }
 
 function getPinnedFiles() {
@@ -82,7 +108,8 @@ function broadcastHoverSoundSettings() {
   const payload = {
     type: 'wf-hover-sound',
     category: getHoverSoundCategory(),
-    mode: getHoverSoundMode()
+    mode: getHoverSoundMode(),
+    volume: getHoverSoundVolume()
   };
   window.dispatchEvent(new CustomEvent('wf-hover-sound-change', { detail: payload }));
 
@@ -173,7 +200,7 @@ function playAssetSound(filename, volume = HOVER_VOLUME) {
 }
 
 function playAssetHoverSound(filename) {
-  playAssetSound(filename, HOVER_VOLUME);
+  playAssetSound(filename, effectiveHoverVolume(BASE_HOVER_VOLUME));
 }
 
 function pickForceFieldFile() {
@@ -197,7 +224,7 @@ export async function playLockedModuleForceField() {
   lastPlayAt = now;
 
   const file = pickForceFieldFile();
-  if (file) playAssetSound(file, LOCKED_REJECT_VOLUME);
+  if (file) playAssetSound(file, effectiveHoverVolume(BASE_LOCKED_REJECT_VOLUME));
 }
 
 /** Synthesized mechanical key / button press (~45ms). */
@@ -207,7 +234,7 @@ function playSyntheticClick() {
 
   const t = ctx.currentTime;
   const master = ctx.createGain();
-  master.gain.value = 0.24;
+  master.gain.value = effectiveHoverVolume(0.24);
   master.connect(ctx.destination);
 
   const bufferSize = Math.floor(ctx.sampleRate * 0.038);
@@ -359,13 +386,20 @@ export function initHoverSoundSync() {
     if (event.data?.type !== 'wf-hover-sound') return;
     if (event.data.category) localStorage.setItem(STORAGE_HOVER_SOUND, event.data.category);
     if (event.data.mode) localStorage.setItem(STORAGE_HOVER_SOUND_MODE, event.data.mode);
+    if (typeof event.data.volume === 'number') {
+      localStorage.setItem(
+        STORAGE_HOVER_SOUND_VOLUME,
+        String(Math.max(0, Math.min(1, event.data.volume)))
+      );
+    }
   });
 
   window.addEventListener('storage', (event) => {
     if (
       event.key === STORAGE_HOVER_SOUND ||
       event.key === STORAGE_HOVER_SOUND_MODE ||
-      event.key === STORAGE_HOVER_SOUND_PINNED
+      event.key === STORAGE_HOVER_SOUND_PINNED ||
+      event.key === STORAGE_HOVER_SOUND_VOLUME
     ) {
       broadcastHoverSoundSettings();
     }

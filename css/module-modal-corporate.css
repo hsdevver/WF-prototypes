@@ -11,23 +11,42 @@ html[data-skin='corporate'] .module-modal.module-modal--corporate-path {
 }
 
 html[data-skin='corporate'] .module-modal--corporate-path .module-modal__backdrop {
-  background: rgba(8, 12, 20, 0.42);
-  -webkit-backdrop-filter: blur(5px) saturate(1.15);
-  backdrop-filter: blur(5px) saturate(1.15);
+  z-index: 1;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  cursor: pointer;
 }
 
 html[data-skin='corporate'] .module-modal--corporate-path .module-modal__panel {
   z-index: 2;
   display: flex;
   flex-direction: column;
-  border-radius: var(--card-radius, 14px);
+  border-radius: 16px;
   box-sizing: border-box;
+  opacity: 1;
+  filter: none;
+  isolation: isolate;
+  background: rgba(14, 18, 26, 0.94);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-skin='corporate'] .module-modal--corporate-path .module-modal__hero {
+  display: none;
 }
 
 html[data-skin='corporate'] .module-modal--corporate-path .module-modal__body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+}
+
+html[data-skin='corporate'] .module-modal--corporate-path .module-modal__actions {
+  margin-top: auto;
+  padding-top: 1.15rem;
 }
 
 html[data-skin='corporate'] .intro-module-wrap.is-modal-origin {
@@ -220,5 +239,15 @@ html[data-skin='corporate'].is-module-modal-open .intro-corporate-leaderboard-pa
 }
 
 html[data-skin='corporate'].is-module-modal-open .intro-chapter {
+  filter: none;
+}
+
+/* Modal lives inside #intro-path-map — do not blur the host (blurs the dialog too) */
+html[data-skin='corporate'].is-module-modal-open .intro-corporate-board__path .intro-path-map {
+  filter: none;
+}
+
+html[data-skin='corporate'].is-module-modal-open .intro-path-map > .intro-connectors,
+html[data-skin='corporate'].is-module-modal-open .intro-path-map > .intro-path-grid {
   filter: none;
 }

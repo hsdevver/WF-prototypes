@@ -273,9 +273,34 @@ export function applyTheme(state = getThemeState()) {
   return { skin, appearance, corporateAppearance, themeColor };
 }
 
+/** Read skin from ?skin= or #skin= / #corporate (before modules run). */
+export function skinFromLocation(loc = location) {
+  const query = new URLSearchParams(loc.search);
+  let raw = query.get('skin');
+  if (!raw && loc.hash) {
+    const hash = loc.hash.replace(/^#/, '').trim();
+    if (hash === 'corporate' || hash === 'space') {
+      raw = hash;
+    } else if (hash.includes('=')) {
+      const hashQuery = hash.startsWith('?') ? hash.slice(1) : hash;
+      raw = new URLSearchParams(hashQuery).get('skin');
+    }
+  }
+  const skin = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (skin === 'corporate' || skin === 'space') return skin;
+  return null;
+}
+
+export function applySkinFromLocation(loc = location) {
+  const skin = skinFromLocation(loc);
+  if (!skin) return null;
+  document.documentElement.dataset.skin = skin;
+  return skin;
+}
+
 function themeStateFromSearch() {
-  const skin = new URLSearchParams(location.search).get('skin');
-  if (skin !== 'corporate' && skin !== 'space') return null;
+  const skin = skinFromLocation();
+  if (!skin) return null;
   return { ...getThemeState(), skin: normalizeSkin(skin) };
 }
 
