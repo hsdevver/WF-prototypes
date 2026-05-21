@@ -22,9 +22,11 @@ import {
   initAmbientMusicSync
 } from './ambient-music.js';
 import {
+  lockVolumeModules,
   resetConsequenceProgress,
   setCorporateVolumeCheatMode,
-  unlockAllConsequenceProgress
+  unlockAllConsequenceProgress,
+  unlockVolumeModules
 } from './consequence-progress.js';
 import {
   HOVER_SOUND_CATEGORIES,
@@ -38,7 +40,7 @@ import {
 } from './ui-sounds.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = '11';
+const PANEL_VERSION = '12';
 
 function panelIsCurrent(panel) {
   return (
@@ -233,11 +235,23 @@ function buildPanel() {
             ? `<div class="cheat-panel__path-row" role="group" aria-label="Volume access">
           <button type="button" class="cheat-panel__reset-path" data-lock-all-volumes>Lock all volumes</button>
           <button type="button" class="cheat-panel__reset-path" data-unlock-all-volumes>Unlock all volumes</button>
+        </div>
+        <div class="cheat-panel__path-row" role="group" aria-label="Volume 1 modules">
+          <button type="button" class="cheat-panel__reset-path" data-lock-volume-modules="1">Lock vol. 1 modules</button>
+          <button type="button" class="cheat-panel__reset-path" data-unlock-volume-modules="1">Unlock vol. 1 modules</button>
+        </div>
+        <div class="cheat-panel__path-row" role="group" aria-label="Volume 2 modules">
+          <button type="button" class="cheat-panel__reset-path" data-lock-volume-modules="2">Lock vol. 2 modules</button>
+          <button type="button" class="cheat-panel__reset-path" data-unlock-volume-modules="2">Unlock vol. 2 modules</button>
+        </div>
+        <div class="cheat-panel__path-row" role="group" aria-label="Volume 3 modules">
+          <button type="button" class="cheat-panel__reset-path" data-lock-volume-modules="3">Lock vol. 3 modules</button>
+          <button type="button" class="cheat-panel__reset-path" data-unlock-volume-modules="3">Unlock vol. 3 modules</button>
         </div>`
             : ''
         }
         <button type="button" class="cheat-panel__reset-path" data-unlock-all-progress>Unlock all chapters</button>
-        <button type="button" class="cheat-panel__reset-path" data-reset-progress>Reset unlocked modules</button>
+        <button type="button" class="cheat-panel__reset-path" data-reset-progress>Lock all modules</button>
       </div>
     </section>`
         : ''
@@ -506,6 +520,20 @@ function wirePanel(panel) {
 
   panel.querySelector('[data-reset-progress]')?.addEventListener('click', () => {
     resetConsequenceProgress();
+  });
+
+  panel.querySelectorAll('[data-lock-volume-modules]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const vol = Number(btn.dataset.lockVolumeModules);
+      lockVolumeModules(vol);
+    });
+  });
+
+  panel.querySelectorAll('[data-unlock-volume-modules]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const vol = Number(btn.dataset.unlockVolumeModules);
+      unlockVolumeModules(vol);
+    });
   });
 }
 

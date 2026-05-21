@@ -148,7 +148,7 @@
                       <section
                         class="intro-corporate-player-profile"
                         id="intro-corporate-player-profile"
-                        aria-label="Your profile"
+                        aria-label="Your profile and coaching feedback"
                       >
                         <div class="intro-corporate-player-profile__identity">
                           <h3 class="intro-corporate-player-profile__name" data-player-name>You</h3>
@@ -195,24 +195,35 @@
                             </div>
                           </div>
                         </div>
+                        <div
+                          class="intro-corporate-player-profile__feedback intro-corporate-feedback"
+                          id="intro-corporate-feedback"
+                        >
+                          <div class="intro-corporate-feedback__head">
+                            <span class="intro-corporate-feedback__label">Feedback</span>
+                          </div>
+                          <p class="intro-corporate-feedback__focus" data-feedback-focus>
+                            Play your first scored module to unlock an AI summary of your latest coaching notes here.
+                          </p>
+                          <p class="intro-corporate-feedback__strength">
+                            <span class="intro-corporate-feedback__strength-label">Keep up</span>
+                            <span data-feedback-strength>Showing up on the path counts—finish a module to see your edge.</span>
+                          </p>
+                        </div>
                       </section>
 
                       <aside
-                        class="intro-corporate-feedback"
-                        id="intro-corporate-feedback"
-                        aria-label="Coaching feedback"
+                        class="intro-corporate-activity"
+                        id="intro-corporate-activity"
+                        aria-label="Your recent moves"
                       >
-                        <div class="intro-corporate-feedback__head">
-                          <span class="intro-corporate-feedback__label">Feedback</span>
-                          <span class="intro-corporate-feedback__hint">Next run</span>
+                        <div class="intro-corporate-activity__head">
+                          <span class="intro-corporate-activity__label">Activity</span>
+                          <span class="intro-corporate-activity__hint">Recent</span>
                         </div>
-                        <p class="intro-corporate-feedback__focus" data-feedback-focus>
-                          Play your first scored module to unlock coaching notes here.
-                        </p>
-                        <p class="intro-corporate-feedback__strength">
-                          <span class="intro-corporate-feedback__strength-label">Keep up</span>
-                          <span data-feedback-strength>Showing up on the path counts—finish a module to see your edge.</span>
-                        </p>
+                        <div class="intro-corporate-activity__viewport">
+                          <ol class="intro-corporate-activity__list" id="intro-activity-log-list"></ol>
+                        </div>
                       </aside>
 
                       <aside
@@ -331,20 +342,6 @@
                       </div>
                     </div>
                     <p class="intro-corporate-leaderboard__more" data-leaderboard-more>287 players below</p>
-                      </aside>
-
-                      <aside
-                        class="intro-corporate-activity"
-                        id="intro-corporate-activity"
-                        aria-label="Your recent moves"
-                      >
-                        <div class="intro-corporate-activity__head">
-                          <span class="intro-corporate-activity__label">Activity</span>
-                          <span class="intro-corporate-activity__hint">Recent</span>
-                        </div>
-                        <div class="intro-corporate-activity__viewport">
-                          <ol class="intro-corporate-activity__list" id="intro-activity-log-list"></ol>
-                        </div>
                       </aside>
                     </div>
                   </div>

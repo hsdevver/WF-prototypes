@@ -251,7 +251,7 @@ function subwayPathRightLeft(fromX, fromY, toX, toY, laneGap = 28, radius = 28, 
 export const SUBWAY_LANE_PITCH = 11;
 
 /** Horizontal spacing between vertical subway trunks (avoids tube crossings). */
-export const SUBWAY_MID_LANE_PITCH = 18;
+export const SUBWAY_MID_LANE_PITCH = 28;
 
 /** Extra exit spacing when multiple tubes leave the same card edge. */
 export const SUBWAY_FROM_FAN_PITCH = 15;
@@ -291,18 +291,27 @@ export function applySubwayLaneBundles(segments, lanePitch = SUBWAY_LANE_PITCH) 
     toBuckets.get(toKey).push(seg);
   }
 
+  const alongSpread = (list, end) => {
+    const key = end === 'p0' ? 'fromAlong' : 'toAlong';
+    const values = list.map((s) => s.anchorOpts?.[key] ?? 0.5);
+    return Math.max(...values) - Math.min(...values);
+  };
+
   const bundleIncoming = (list) => {
     if (list.length < 2) return;
-    const alongSpread =
-      Math.max(...list.map((s) => s.anchorOpts?.toAlong ?? 0.5)) -
-      Math.min(...list.map((s) => s.anchorOpts?.toAlong ?? 0.5));
-    if (alongSpread > 0.08) return;
+    if (alongSpread(list, 'p3') >= 0.08) return;
     bundle(list, 'p3', lanePitch);
   };
 
+  const bundleOutgoing = (list) => {
+    if (list.length < 2) return;
+    if (alongSpread(list, 'p0') >= 0.08) return;
+    bundle(list, 'p0', SUBWAY_FROM_FAN_PITCH);
+  };
+
   for (const list of fromBuckets.values()) {
-    const pitch = list.length > 1 ? SUBWAY_FROM_FAN_PITCH : lanePitch;
-    bundle(list, 'p0', pitch);
+    if (list.length > 1) bundleOutgoing(list);
+    else bundle(list, 'p0', lanePitch);
   }
   for (const list of toBuckets.values()) bundleIncoming(list);
 }
@@ -333,6 +342,12 @@ export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
     if (list.length < 2) continue;
 
     list.sort((a, b) => {
+      const al = a.seg.anchorOpts?.subwayLane;
+      const bl = b.seg.anchorOpts?.subwayLane;
+      if (al != null && bl != null && al !== bl) return al - bl;
+      const aMid = (a.seg.p0.y + a.seg.p3.y) * 0.5;
+      const bMid = (b.seg.p0.y + b.seg.p3.y) * 0.5;
+      if (aMid !== bMid) return aMid - bMid;
       const ay = a.seg.p0.y;
       const by = b.seg.p0.y;
       if (ay !== by) return ay - by;
@@ -340,18 +355,22 @@ export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
     });
 
     const n = list.length;
-    const lanePitch =
-      n >= 4 ? SUBWAY_MID_LANE_PITCH + 6 : n >= 3 ? SUBWAY_MID_LANE_PITCH + 3 : pitch;
+    const lanePitch = pitch + Math.max(0, n - 2) * 6;
     list.forEach((item, i) => {
       const { seg, rl } = item;
       const from = rl ? seg.p0 : seg.p3;
       const to = rl ? seg.p3 : seg.p0;
       const dx = to.x - from.x;
       const dirX = dx >= 0 ? 1 : -1;
-      const laneGap = Math.min(56, Math.max(24, Math.abs(dx) * 0.22));
+      const laneGap = Math.min(72, Math.max(28, Math.abs(dx) * 0.26 + Math.max(0, n - 2) * 3));
       const exitX = from.x + dirX * laneGap;
       const entryX = to.x - dirX * laneGap;
       const baseMidX = (exitX + entryX) * 0.5;
+      const rowDy = Math.abs(seg.p0.y - seg.p3.y);
+      if (rowDy < 4) {
+        seg.anchorOpts = { ...seg.anchorOpts, subwayMidX: baseMidX };
+        return;
+      }
       const offset = (i - (n - 1) / 2) * lanePitch;
       seg.anchorOpts = { ...seg.anchorOpts, subwayMidX: baseMidX + offset };
     });

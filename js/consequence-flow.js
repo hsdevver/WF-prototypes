@@ -142,10 +142,29 @@ export const CONSEQUENCE_EDGES = [
  * Cord attachment per edge (from → to), matched to layout sketches.
  * Only drawn when both modules are unlocked.
  */
+/** Upper / lower fork spacing for corporate subway tubes (chapter 1 split reference). */
+export const SUBWAY_FORK_ALONG = {
+  upper: { fromAlong: 0.32, toAlong: 0.28 },
+  lower: { fromAlong: 0.68, toAlong: 0.72 },
+  center: { fromAlong: 0.5, toAlong: 0.5 }
+};
+
 export const CONSEQUENCE_CORD_ANCHORS = {
   'm1|m2': { from: 'right', to: 'left', slack: 1.06, sagSign: 1 },
-  'm2|m6': { from: 'right', to: 'left', fromAlong: 0.32, toAlong: 0.28, slack: 1.14, sagSign: -1 },
-  'm2|m4': { from: 'right', to: 'left', fromAlong: 0.68, toAlong: 0.72, slack: 1.14, sagSign: 1 },
+  'm2|m6': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.upper,
+    slack: 1.14,
+    sagSign: -1
+  },
+  'm2|m4': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.lower,
+    slack: 1.14,
+    sagSign: 1
+  },
   'm6|m8': { from: 'right', to: 'left', toAlong: 0.38, fromAlong: 0.5, slack: 1.08, sagSign: -1 },
   'm4|m8': { from: 'right', to: 'left', toAlong: 0.62, fromAlong: 0.5, slack: 1.08, sagSign: 1 },
   'm8|m5': { from: 'right', to: 'left', slack: 1.06, sagSign: 1 }
@@ -369,8 +388,8 @@ export const CHAPTER_2_PLAY_SCENARIOS = {
 };
 
 /**
- * Volume 3 — split → merge → branch column (3A / 3 / 3B) → converge → finish.
- * 3A and 3B share column 3 with chapter 3 (not column 4).
+ * Volume 3 — split → merge → branch column (3A / 3 / 3B on grid rows 1–3) → converge → finish.
+ * Column 3 uses three grid rows (like m6 / m8 / m4), not a single stack, so tube spacing matches ch.1.
  */
 export const CHAPTER_3_MODULES = [
   {
@@ -486,15 +505,80 @@ export const CHAPTER_3_EDGES = [
 ];
 
 export const CHAPTER_3_CORD_ANCHORS = {
-  'c3m1|c3m2a': { from: 'right', to: 'left', fromAlong: 0.34, toAlong: 0.42, slack: 1.14, sagSign: -1 },
-  'c3m1|c3m2b': { from: 'right', to: 'left', fromAlong: 0.66, toAlong: 0.58, slack: 1.14, sagSign: 1 },
-  'c3m2a|c3m3a': { from: 'right', to: 'left', fromAlong: 0.44, toAlong: 0.3, slack: 1.1, sagSign: -1 },
-  'c3m2a|c3m3': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.42, slack: 1.12, sagSign: -1 },
-  'c3m2b|c3m3b': { from: 'right', to: 'left', fromAlong: 0.7, toAlong: 0.74, slack: 1.1, sagSign: 1 },
-  'c3m2b|c3m3': { from: 'right', to: 'left', fromAlong: 0.36, toAlong: 0.56, slack: 1.12, sagSign: 1 },
-  'c3m3|c3m4': { from: 'right', to: 'left', slack: 1.06, sagSign: 1 },
-  'c3m3a|c3m4': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.36, slack: 1.1, sagSign: -1 },
-  'c3m3b|c3m4': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.64, slack: 1.1, sagSign: 1 },
+  'c3m1|c3m2a': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.upper,
+    subwayLane: 0,
+    slack: 1.14,
+    sagSign: -1
+  },
+  'c3m1|c3m2b': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.lower,
+    subwayLane: 1,
+    slack: 1.14,
+    sagSign: 1
+  },
+  'c3m2a|c3m3a': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.center,
+    subwayLane: 0,
+    slack: 1.1,
+    sagSign: -1
+  },
+  'c3m2a|c3m3': {
+    from: 'right',
+    to: 'left',
+    fromAlong: 0.44,
+    toAlong: 0.5,
+    subwayLane: 1,
+    slack: 1.12,
+    sagSign: -1
+  },
+  'c3m2b|c3m3': {
+    from: 'right',
+    to: 'left',
+    fromAlong: 0.6,
+    toAlong: 0.5,
+    subwayLane: 2,
+    slack: 1.12,
+    sagSign: 1
+  },
+  'c3m2b|c3m3b': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.center,
+    subwayLane: 3,
+    slack: 1.1,
+    sagSign: 1
+  },
+  'c3m3|c3m4': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.center,
+    subwayLane: 1,
+    slack: 1.06,
+    sagSign: 1
+  },
+  'c3m3a|c3m4': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.upper,
+    subwayLane: 0,
+    slack: 1.1,
+    sagSign: -1
+  },
+  'c3m3b|c3m4': {
+    from: 'right',
+    to: 'left',
+    ...SUBWAY_FORK_ALONG.lower,
+    subwayLane: 2,
+    slack: 1.1,
+    sagSign: 1
+  },
   'c3m4|c3m5': { from: 'right', to: 'left', slack: 1.06, sagSign: 1 }
 };
 
@@ -673,30 +757,56 @@ export const PATH_ROUTE_VARIANTS = {
       edges: ['m1|m2', 'm2|m4', 'm4|m8', 'm8|m5']
     }
   ],
+  c3m4: [
+    {
+      id: 'via-2a-3a',
+      along: 0.28,
+      label: '2A · 3A · 4',
+      edges: ['c3m1|c3m2a', 'c3m2a|c3m3a', 'c3m3a|c3m4']
+    },
+    {
+      id: 'via-2a-3',
+      along: 0.4,
+      label: '2A · 3 · 4',
+      edges: ['c3m1|c3m2a', 'c3m2a|c3m3', 'c3m3|c3m4']
+    },
+    {
+      id: 'via-2b-3',
+      along: 0.55,
+      label: '2B · 3 · 4',
+      edges: ['c3m1|c3m2b', 'c3m2b|c3m3', 'c3m3|c3m4']
+    },
+    {
+      id: 'via-2b-3b',
+      along: 0.72,
+      label: '2B · 3B · 4',
+      edges: ['c3m1|c3m2b', 'c3m2b|c3m3b', 'c3m3b|c3m4']
+    }
+  ],
   c3m5: [
     {
       id: 'via-2a-3a',
       along: 0.12,
-      label: '2A · 3A · 4',
+      label: '2A · 3A · 4 · 5',
       edges: ['c3m1|c3m2a', 'c3m2a|c3m3a', 'c3m3a|c3m4', 'c3m4|c3m5']
     },
     {
       id: 'via-2a-3',
       along: 0.37,
-      label: '2A · 3 · 4',
+      label: '2A · 3 · 4 · 5',
       edges: ['c3m1|c3m2a', 'c3m2a|c3m3', 'c3m3|c3m4', 'c3m4|c3m5']
     },
     {
-      id: 'via-2b-3b',
+      id: 'via-2b-3',
       along: 0.63,
-      label: '2B · 3B · 4',
-      edges: ['c3m1|c3m2b', 'c3m2b|c3m3b', 'c3m3b|c3m4', 'c3m4|c3m5']
+      label: '2B · 3 · 4 · 5',
+      edges: ['c3m1|c3m2b', 'c3m2b|c3m3', 'c3m3|c3m4', 'c3m4|c3m5']
     },
     {
-      id: 'via-2b-3',
+      id: 'via-2b-3b',
       along: 0.88,
-      label: '2B · 3 · 4',
-      edges: ['c3m1|c3m2b', 'c3m2b|c3m3', 'c3m3|c3m4', 'c3m4|c3m5']
+      label: '2B · 3B · 4 · 5',
+      edges: ['c3m1|c3m2b', 'c3m2b|c3m3b', 'c3m3b|c3m4', 'c3m4|c3m5']
     }
   ]
 };

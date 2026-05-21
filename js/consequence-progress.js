@@ -155,6 +155,118 @@ export function resetConsequenceProgress() {
   notifyChange({ reset: true });
 }
 
+function moduleIdsForChapter(chapter) {
+  return getChapterGraph(chapter).modules.map((mod) => mod.id);
+}
+
+/** First module in a volume (CHAPTER 1 / `start: true`) — stays unlocked after volume lock cheat. */
+function volumeStartModuleId(chapter) {
+  const graph = getChapterGraph(chapter);
+  const start = graph.modules.find((mod) => mod.start);
+  return start?.id ?? graph.modules[0]?.id ?? null;
+}
+
+function edgeTouchesChapter(edgeKeyStr, moduleIdSet) {
+  const [from, to] = edgeKeyStr.split('|');
+  return moduleIdSet.has(from) || moduleIdSet.has(to);
+}
+
+/** Cheat: lock every module in one volume except its CHAPTER 1 entry (`start` module). */
+export function lockVolumeModules(chapter) {
+  const vol = chapter === 2 || chapter === 3 ? chapter : 1;
+  const ids = new Set(moduleIdsForChapter(vol));
+  const startId = volumeStartModuleId(vol);
+
+  state.unlocked = state.unlocked.filter((id) => !ids.has(id));
+  state.completed = state.completed.filter((id) => !ids.has(id));
+  state.filledEdges = state.filledEdges.filter((key) => !edgeTouchesChapter(key, ids));
+  for (const id of ids) {
+    delete state.lastChoices[id];
+    delete state.lastDirections[id];
+    delete state.moduleScores[id];
+  }
+  for (const key of Object.keys(state.edgeLabels)) {
+    if (edgeTouchesChapter(key, ids)) delete state.edgeLabels[key];
+  }
+
+  if (startId && !state.unlocked.includes(startId)) state.unlocked.push(startId);
+
+  if (vol === 1) {
+    state.currentChapter = 1;
+    state.chapterHandoffDone = false;
+    state.chapter3HandoffDone = false;
+  } else if (vol === 2) {
+    state.chapterHandoffDone = false;
+    if (state.currentChapter >= 2) state.currentChapter = 1;
+  } else if (vol === 3) {
+    state.chapter3HandoffDone = false;
+    if (state.currentChapter === 3) state.currentChapter = state.chapterHandoffDone ? 2 : 1;
+  }
+
+  saveState(state);
+  notifyChange({ lockVolume: vol });
+}
+
+function simulateChapterPlayState(chapter) {
+  const graph = getChapterGraph(chapter);
+  const filledEdges = [];
+  const lastChoices = {};
+  const lastDirections = {};
+  const edgeLabels = {};
+  const moduleScores = {};
+
+  for (const [from, to] of graph.edges) {
+    const key = edgeKey(from, to);
+    filledEdges.push(key);
+    edgeLabels[key] = 'Completed';
+  }
+
+  for (const [moduleId, scenario] of Object.entries(graph.scenarios)) {
+    const outcome = scenario.outcomes?.[0];
+    if (!outcome) continue;
+    if (outcome.lastChoice) lastChoices[moduleId] = outcome.lastChoice;
+    if (outcome.direction) lastDirections[moduleId] = outcome.direction;
+  }
+
+  for (const mod of graph.modules) {
+    if (!mod.modal?.showStats) continue;
+    moduleScores[mod.id] = mod.id === 'm8' ? EMPATHY_SCORE_FLOOR : EMPATHY_SCORE_FOUR_STARS;
+  }
+
+  return { filledEdges, lastChoices, lastDirections, edgeLabels, moduleScores };
+}
+
+/** Cheat: unlock and mark played all modules in one corporate volume. */
+export function unlockVolumeModules(chapter) {
+  const vol = chapter === 2 || chapter === 3 ? chapter : 1;
+  const graph = getChapterGraph(vol);
+  const ids = graph.modules.map((mod) => mod.id);
+  const before = new Set(state.unlocked);
+  const simulated = simulateChapterPlayState(vol);
+
+  for (const id of ids) {
+    if (!state.unlocked.includes(id)) state.unlocked.push(id);
+    if (!state.completed.includes(id)) state.completed.push(id);
+  }
+
+  for (const key of simulated.filledEdges) {
+    if (!state.filledEdges.includes(key)) state.filledEdges.push(key);
+    state.edgeLabels[key] = simulated.edgeLabels[key];
+  }
+
+  Object.assign(state.lastChoices, simulated.lastChoices);
+  Object.assign(state.lastDirections, simulated.lastDirections);
+  Object.assign(state.moduleScores, simulated.moduleScores);
+
+  if (vol >= 2) state.chapterHandoffDone = true;
+  if (vol >= 3) state.chapter3HandoffDone = true;
+  if (vol > state.currentChapter) state.currentChapter = vol;
+
+  saveState(state);
+  const newlyUnlocked = ids.filter((id) => !before.has(id));
+  notifyChange({ unlockVolume: vol, newlyUnlocked, simulatedPlay: true });
+}
+
 function allModuleIds() {
   const ids = new Set();
   for (const chapter of [1, 2, 3]) {

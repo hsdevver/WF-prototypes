@@ -13,15 +13,12 @@ const ACTIVITY_MIN_HEIGHT_PX = 104;
 const ACTIVITY_MAX_HEIGHT_PX = 184;
 const ACTIVITY_FLEX_SHARE = 0.26;
 const LB_VIEWPORT_MIN_ROWS = 4;
-const LB_VIEWPORT_MAX_ROWS = 7.5;
 const SIDE_COLUMN_MIN_PX = 280;
 const SIDE_COLUMN_BOTTOM_PAD_PX = 20;
-const PROFILE_VH_SHARE = 0.215;
-const FEEDBACK_VH_SHARE = 0.17;
-const PROFILE_MIN_PX = 152;
-const PROFILE_MAX_PX = 212;
-const FEEDBACK_MIN_PX = 124;
-const FEEDBACK_MAX_PX = 172;
+/** Combined profile + feedback card (single column slot). */
+const PROFILE_CARD_VH_SHARE = 0.385;
+const PROFILE_CARD_MIN_PX = 276;
+const PROFILE_CARD_MAX_PX = 384;
 const BRANCH_BLINK_MS = 1200;
 const BRANCH_RESOLVE_MS = 420;
 const UNLOCK_STAGGER_MS = 140;
@@ -586,16 +583,17 @@ function syncActivityPanelHeight() {
   column.style.height = `${columnH}px`;
   column.style.maxHeight = `${columnH}px`;
 
-  const profileH = clampPx(columnH * PROFILE_VH_SHARE, PROFILE_MIN_PX, PROFILE_MAX_PX);
-  const feedbackH = clampPx(columnH * FEEDBACK_VH_SHARE, FEEDBACK_MIN_PX, FEEDBACK_MAX_PX);
-  column.style.setProperty('--side-profile-height', `${profileH}px`);
-  column.style.setProperty('--side-feedback-height', `${feedbackH}px`);
+  const profileCardH = clampPx(
+    columnH * PROFILE_CARD_VH_SHARE,
+    PROFILE_CARD_MIN_PX,
+    PROFILE_CARD_MAX_PX
+  );
+  column.style.setProperty('--side-profile-height', `${profileCardH}px`);
 
   const gap = parseFloat(getComputedStyle(column).gap) || 9;
-  const flexSpace = Math.max(0, columnH - profileH - feedbackH - gap * 3);
+  const flexSpace = Math.max(0, columnH - profileCardH - gap * 2);
   const rowStep = measureLbRowStepPx(leaderboard);
   const lbMinViewport = Math.round(rowStep * LB_VIEWPORT_MIN_ROWS);
-  const lbMaxViewport = Math.round(rowStep * LB_VIEWPORT_MAX_ROWS);
 
   const lbHead = leaderboard.querySelector('.intro-corporate-leaderboard__head');
   const lbMore = leaderboard.querySelector('[data-leaderboard-more]');
@@ -615,17 +613,31 @@ function syncActivityPanelHeight() {
     lbPanelH = flexSpace - activityH;
   }
 
-  const lbViewport = Math.max(lbMinViewport, Math.min(lbMaxViewport, lbPanelH - lbChrome));
+  const lbViewport = Math.max(lbMinViewport, lbPanelH - lbChrome);
+  const lbRowSlots = Math.max(LB_VIEWPORT_MIN_ROWS, lbViewport / rowStep);
 
   activity.style.setProperty('--activity-panel-height', `${activityH}px`);
   activity.style.height = `${activityH}px`;
   activity.style.maxHeight = `${activityH}px`;
   activity.style.flexBasis = `${activityH}px`;
+  leaderboard.style.setProperty('--lb-row-step', `${rowStep}px`);
   leaderboard.style.setProperty('--leaderboard-viewport-height', `${lbViewport}px`);
+  leaderboard.style.setProperty('--lb-viewport-row-count', String(lbRowSlots));
+
+  const listWrap = leaderboard.querySelector('.intro-corporate-leaderboard__list-wrap');
+  if (listWrap) {
+    listWrap.style.flexBasis = `${lbViewport}px`;
+    listWrap.style.flexGrow = '0';
+    listWrap.style.flexShrink = '0';
+    listWrap.style.height = `${lbViewport}px`;
+    listWrap.style.maxHeight = `${lbViewport}px`;
+  }
   leaderboard.style.setProperty('--leaderboard-panel-height', `${lbPanelH}px`);
   leaderboard.style.flexBasis = `${lbPanelH}px`;
   leaderboard.style.height = `${lbPanelH}px`;
   leaderboard.style.maxHeight = `${lbPanelH}px`;
+
+  window.dispatchEvent(new CustomEvent('wf:leaderboard-viewport'));
 }
 
 function bindActivityPanelHeightSync() {
@@ -775,6 +787,21 @@ export function initIntroActivityLog() {
   window.addEventListener('wf-progress-change', (event) => {
     if (event.detail?.reset) resetActivityLog();
   });
+}
+
+/** Recent module ids from activity (newest first, de-duplicated). */
+export function getRecentActivityModuleIds(limit = 10) {
+  const seen = new Set();
+  /** @type {string[]} */
+  const ids = [];
+  for (const entry of [...entries].sort((a, b) => b.at - a.at)) {
+    if (!entry.moduleId || seen.has(entry.moduleId)) continue;
+    if (entry.kind !== 'played' && entry.kind !== 'replayed' && entry.kind !== 'scored') continue;
+    seen.add(entry.moduleId);
+    ids.push(entry.moduleId);
+    if (ids.length >= limit) break;
+  }
+  return ids;
 }
 
 export function getActivityLogVisibleRows() {

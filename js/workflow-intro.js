@@ -1,5 +1,6 @@
 import { wireSecretChapterTrigger } from './cheat-panel.js';
 import {
+  getRecentActivityModuleIds,
   initIntroActivityLog,
   recordPlayActivity,
   syncIntroSideColumnLayout
@@ -10,6 +11,7 @@ import {
   anchorFromRect,
   applySubwayLaneBundles,
   applySubwayMidXLanes,
+  SUBWAY_MID_LANE_PITCH,
   sortSubwayCordPaintOrder,
   cordPathD,
   cordPhaseOffset,
@@ -25,6 +27,7 @@ import {
 import {
   CHAPTER_1_END_MODULE_ID,
   CHAPTER_2_END_MODULE_ID,
+  formatChapterLabel,
   getChapterAriaLabel,
   getPathRouteVariants,
   MODULE_SKILL_FOCUS
@@ -104,56 +107,67 @@ function dissolveCorporatePathStacks() {
   });
 }
 
-/** Spine cols on one row; branch col stacks 3A/3B with gap = 1.5× column gap. */
+/** True when the path grid DOM matches the active catalog (avoids linear layout on stale vol. 3 cards). */
+function pathMapMatchesCatalog() {
+  if (!gridEl) return true;
+  const catalogIds = getRuntimeModules()
+    .map((m) => m.id)
+    .sort()
+    .join(',');
+  const domIds = [...gridEl.querySelectorAll('.intro-module-wrap[data-module-anchor]')]
+    .map((w) => w.dataset.moduleAnchor)
+    .filter(Boolean)
+    .sort()
+    .join(',');
+  return catalogIds === domIds;
+}
+
+/** Rebuild the grid when catalog chapter and rendered modules diverge (cheat / volume nav). */
+function syncCorporatePathMapToCatalog() {
+  if (!isCorporateSkin() || !gridEl || pathMapMatchesCatalog()) return;
+  if (usesIntroSidePanel()) setCatalogChapter(getCorporateViewVolume());
+  renderModules();
+}
+
+/** Place each module on its graph row/column so forks align across the grid (reference layout). */
 function applyCorporateModuleGridLayout() {
   if (!isCorporateSkin() || !gridEl) return;
 
+  syncCorporatePathMapToCatalog();
+  if (!pathMapMatchesCatalog()) return;
+
   dissolveCorporatePathStacks();
 
+  const modules = getRuntimeModules();
   const byColumn = new Map();
-  getRuntimeModules().forEach((mod) => {
+  modules.forEach((mod) => {
     if (!byColumn.has(mod.column)) byColumn.set(mod.column, []);
     byColumn.get(mod.column).push(mod);
   });
 
-  byColumn.forEach((colMods, column) => {
-    const sorted = [...colMods].sort((a, b) => a.row - b.row);
+  const maxRow = Math.max(1, ...modules.map((m) => m.row));
+  const maxCol = Math.max(1, ...modules.map((m) => m.column));
+  gridEl.style.gridTemplateRows = `repeat(${maxRow}, auto)`;
+  gridEl.style.gridTemplateColumns = `repeat(${maxCol}, minmax(0, 1fr))`;
 
-    if (sorted.length === 1) {
-      const wrap = gridEl.querySelector(`[data-module-anchor="${sorted[0].id}"]`);
-      if (!wrap) return;
-      wrap.classList.remove(
-        'intro-module-wrap--stacked',
-        'intro-module-wrap--stack-top',
-        'intro-module-wrap--stack-bottom'
-      );
-      wrap.classList.add('intro-module-wrap--solo');
-      wrap.style.gridColumn = String(column);
-      wrap.style.gridRow = '1';
-      return;
-    }
-
-    const stack = document.createElement('div');
-    stack.className = 'intro-path-stack intro-path-stack--branch';
-    stack.dataset.stackColumn = String(column);
-    stack.style.gridColumn = String(column);
-    stack.style.gridRow = '1';
-    gridEl.appendChild(stack);
-
-    sorted.forEach((mod, index) => {
-      const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
-      if (!wrap) return;
-      wrap.classList.remove('intro-module-wrap--solo');
-      wrap.classList.add('intro-module-wrap--stacked');
-      wrap.classList.toggle('intro-module-wrap--stack-top', index === 0);
-      wrap.classList.toggle('intro-module-wrap--stack-bottom', index === sorted.length - 1);
-      wrap.style.gridColumn = '';
-      wrap.style.gridRow = '';
-      stack.appendChild(wrap);
-    });
+  modules.forEach((mod) => {
+    const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
+    if (!wrap) return;
+    wrap.classList.remove(
+      'intro-module-wrap--stacked',
+      'intro-module-wrap--stack-top',
+      'intro-module-wrap--stack-bottom'
+    );
+    wrap.classList.add('intro-module-wrap--solo');
+    wrap.style.gridColumn = String(mod.column);
+    wrap.style.gridRow = String(mod.row);
   });
 
-  const hasBranching = Boolean(gridEl.querySelector('.intro-path-stack--branch'));
+  const hasBranching = [...byColumn.values()].some((colMods) => {
+    if (colMods.length < 2) return false;
+    const rows = colMods.map((m) => m.row);
+    return Math.max(...rows) - Math.min(...rows) > 1;
+  });
   const linearCols = byColumn.size;
   const board = document.getElementById('intro-corporate-board');
   board?.classList.toggle('is-path-linear', !hasBranching);
@@ -1196,6 +1210,7 @@ function patchModulesFromRuntime(unlockedIds = []) {
     let stars = thumb.querySelector('.module-stars');
 
     if (mod.locked) {
+      if (modulePathHoverId === mod.id) clearModulePathHover();
       if (!lock) {
         lock = document.createElement('div');
         lock.className = 'module-padlock';
@@ -1339,28 +1354,96 @@ function formatYourPts() {
 
 const PLAYER_DISPLAY_NAME = 'You';
 
+const SKILL_LABELS = {
+  empathy: 'empathy',
+  ownership: 'ownership',
+  communication: 'communication'
+};
+
 const SKILL_FEEDBACK = {
   empathy: {
-    focus:
-      'Before you choose, name what the other person might be feeling—one sentence is enough to steady your next move.',
     strength: 'You stay present when lanes split; you rarely rush past a scored moment without landing it.'
   },
   ownership: {
-    focus:
-      'On the next module, call out one thing you will own end-to-end—even a small follow-up counts on this path.',
     strength: 'You close loops once a branch opens; check-ins and hub clears show you finish what you start.'
   },
   communication: {
-    focus:
-      'Draft your opener out loud before you play again—clarity at the start saves rework on the merge lanes.',
     strength: 'Orientation and straight-ahead runs read clean; you set context before the team moves.'
   }
 };
 
 const SKILL_DEFAULT_FEEDBACK = {
-  focus: 'Play your first scored module to unlock coaching notes tailored to your runs.',
+  focus: 'Play your first scored module to unlock an AI summary of your latest coaching notes here.',
   strength: 'Showing up on the path counts—finish a module to see what to keep doing.'
 };
+
+function pickReplayModuleForSkill(skillKey) {
+  const candidates = getRuntimeModules().filter(
+    (mod) => MODULE_SKILL_FOCUS[mod.id] === skillKey && moduleSkillSample(mod) != null
+  );
+  if (!candidates.length) return null;
+
+  for (const id of getRecentActivityModuleIds()) {
+    const recent = candidates.find((mod) => mod.id === id);
+    if (recent) return recent;
+  }
+
+  candidates.sort((a, b) => (moduleSkillSample(a) ?? 100) - (moduleSkillSample(b) ?? 100));
+  return candidates[0];
+}
+
+function formatReplayImprovement(skillKey) {
+  const mod = pickReplayModuleForSkill(skillKey);
+  if (!mod?.chapter) return '';
+  const chapter = formatChapterLabel(mod.chapter);
+  if (!chapter) return '';
+  return `Play ${chapter} again to improve ${SKILL_LABELS[skillKey] ?? skillKey}.`;
+}
+
+/** @typedef {{ summary: string, action: string }} FeedbackFocusParts */
+
+/** AI-style recap of recent coaching — reflects empathy / ownership / communication spread. */
+function summarizeFeedbackFocus(skills) {
+  const entries = Object.entries(skills).filter(([, value]) => value != null);
+  if (!entries.length) {
+    return { summary: SKILL_DEFAULT_FEEDBACK.focus, action: '' };
+  }
+
+  const sorted = [...entries].sort((a, b) => a[1] - b[1]);
+  const [lowKey] = sorted[0];
+  const [highKey] = sorted[sorted.length - 1];
+  const spread = sorted[sorted.length - 1][1] - sorted[0][1];
+  const midKeys = sorted.slice(1, -1).map(([key]) => SKILL_LABELS[key] ?? key);
+  const action = formatReplayImprovement(lowKey);
+
+  let summary;
+  if (spread <= 10) {
+    summary =
+      'Your recent feedback is balanced across empathy, ownership, and communication—runs read steady, with no single lane dominating the profile.';
+  } else if (spread <= 22) {
+    const midPhrase = midKeys.length ? `, with ${midKeys.join(' and ')} between them` : '';
+    summary = `Latest coaching summary: ${SKILL_LABELS[highKey]} is slightly ahead${midPhrase}, and ${SKILL_LABELS[lowKey]} has the most room to grow on the next run.`;
+  } else {
+    const midPhrase = midKeys.length ? `, with ${midKeys.join(' and ')} between them` : '';
+    summary = `Recent runs lean on ${SKILL_LABELS[highKey]}; ${SKILL_LABELS[lowKey]} is the clearest gap in your skill spread${midPhrase}.`;
+  }
+
+  return { summary, action };
+}
+
+function renderFeedbackFocus(el, focus) {
+  if (!el) return;
+  el.replaceChildren();
+  const parts = typeof focus === 'string' ? { summary: focus, action: '' } : focus;
+  if (parts.summary) el.append(parts.summary);
+  if (parts.action) {
+    if (parts.summary) el.append(' ');
+    const actionEl = document.createElement('strong');
+    actionEl.className = 'intro-corporate-feedback__action';
+    actionEl.textContent = parts.action;
+    el.appendChild(actionEl);
+  }
+}
 
 /** Shown on profile skill bars whenever score > 0 but no played modules yet. */
 const SKILL_ACTIVE_FALLBACK = {
@@ -1393,8 +1476,107 @@ const STARCLUB_PEER_NAMES = [
   'L. Bergström'
 ];
 
-/** Visible row slots in the leaderboard viewport (matches CSS 7.5 × --lb-row-step). */
-const LB_VIEWPORT_ROWS = 7.5;
+const LEADERBOARD_FILLER_NAMES = [
+  ...STARCLUB_PEER_NAMES,
+  'C. Okada',
+  'D. Fischer',
+  'H. Alves',
+  'I. Kowalski',
+  'J. Mensah',
+  'K. Okafor',
+  'T. Dubois',
+  'V. Santos',
+  'Y. Tanaka',
+  'Z. Williams',
+  'A. Dubois',
+  'B. Chen',
+  'F. Nielsen',
+  'G. Rossi'
+];
+
+const LB_VIEWPORT_ROWS_DEFAULT = 7.5;
+
+function getLbViewportRowSlots() {
+  const panel = document.getElementById('intro-corporate-leaderboard');
+  if (!panel) return LB_VIEWPORT_ROWS_DEFAULT;
+  const raw = parseFloat(getComputedStyle(panel).getPropertyValue('--lb-viewport-row-count').trim());
+  return Number.isFinite(raw) && raw > 0 ? raw : LB_VIEWPORT_ROWS_DEFAULT;
+}
+
+function parseLeaderboardPts(pts) {
+  if (pts == null || pts === '') return null;
+  const n = Number.parseInt(String(pts).replace(/,/g, ''), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function synthLeaderboardName(scope, rank) {
+  let n = 0;
+  const key = `${scope}|${rank}`;
+  for (let i = 0; i < key.length; i++) n += key.charCodeAt(i);
+  return LEADERBOARD_FILLER_NAMES[n % LEADERBOARD_FILLER_NAMES.length];
+}
+
+function synthLeaderboardPts(rank, youRank, anchorPts) {
+  const spread = (youRank - rank) * 82 + ((rank * 19) % 37);
+  return Math.max(120, anchorPts + spread);
+}
+
+/**
+ * Grow the visible rank window so the list fills the viewport (unless the pool is tiny).
+ * @param {object} scopeData
+ * @param {number} rowSlots
+ */
+function expandLeaderboardRows(scopeData, rowSlots) {
+  const seedRows = scopeData.rows ?? [];
+  if (!seedRows.length) return seedRows;
+
+  const scope = scopeData.scope ?? 'department';
+  const youRow = seedRows.find((row) => row.you);
+  const youRank = youRow?.rank ?? scopeData.youRank ?? 1;
+  const totalPlayers = scopeData.totalPlayers ?? youRank + (scopeData.playersBelow ?? 0);
+  const playersAbove = scopeData.playersAbove ?? Math.max(0, youRank - 1);
+  const playersBelow = scopeData.playersBelow ?? Math.max(0, totalPlayers - youRank);
+  const fullTarget = Math.max(3, Math.ceil(rowSlots));
+
+  if (totalPlayers <= fullTarget) {
+    return seedRows.map((row, i) => ({
+      ...row,
+      peek: (i === 0 && row.rank > 1) || (i === seedRows.length - 1 && row.rank < totalPlayers)
+    }));
+  }
+
+  let rowsAbove = Math.min(playersAbove, fullTarget - 1);
+  let rowsBelow = Math.min(playersBelow, fullTarget - 1 - rowsAbove);
+  while (rowsAbove + rowsBelow + 1 < fullTarget) {
+    if (rowsBelow < playersBelow) rowsBelow += 1;
+    else if (rowsAbove < playersAbove) rowsAbove += 1;
+    else break;
+  }
+
+  const startRank = Math.max(1, youRank - rowsAbove);
+  const endRank = Math.min(totalPlayers, youRank + rowsBelow);
+  const seedByRank = new Map(seedRows.map((row) => [row.rank, row]));
+  const anchorPts = parseLeaderboardPts(youRow?.pts) ?? yourPlayerPoints();
+  const rows = [];
+
+  for (let rank = startRank; rank <= endRank; rank++) {
+    const existing = seedByRank.get(rank);
+    const peek =
+      (rank === startRank && startRank > 1) || (rank === endRank && endRank < totalPlayers);
+    if (existing) {
+      rows.push({ ...existing, peek: peek || Boolean(existing.peek) });
+      continue;
+    }
+    rows.push({
+      rank,
+      name: synthLeaderboardName(scope, rank),
+      pts: formatLeaderboardPts(synthLeaderboardPts(rank, youRank, anchorPts)),
+      peek
+    });
+  }
+
+  return rows;
+}
 
 const LEADERBOARD_SCOPES = {
   department: {
@@ -1485,10 +1667,9 @@ function feedbackForSkills(skills) {
   if (!entries.length) return SKILL_DEFAULT_FEEDBACK;
 
   const sorted = [...entries].sort((a, b) => a[1] - b[1]);
-  const lowest = sorted[0][0];
   const highest = sorted[sorted.length - 1][0];
   return {
-    focus: SKILL_FEEDBACK[lowest]?.focus ?? SKILL_DEFAULT_FEEDBACK.focus,
+    focus: summarizeFeedbackFocus(skills),
     strength: SKILL_FEEDBACK[highest]?.strength ?? SKILL_DEFAULT_FEEDBACK.strength
   };
 }
@@ -1534,7 +1715,7 @@ function syncPlayerProfile() {
   }
 
   const focusEl = feedback?.querySelector('[data-feedback-focus]');
-  if (focusEl) focusEl.textContent = coaching.focus;
+  renderFeedbackFocus(focusEl, coaching.focus);
   const strengthEl = feedback?.querySelector('[data-feedback-strength]');
   if (strengthEl) strengthEl.textContent = coaching.strength;
 
@@ -1605,10 +1786,13 @@ function applyYourPtsToRows(rows) {
 }
 
 function leaderboardScopeData(scope) {
-  if (scope === 'starclub') return buildStarclubLeaderboard();
-  const data = LEADERBOARD_SCOPES[scope];
+  let data;
+  if (scope === 'starclub') data = buildStarclubLeaderboard();
+  else data = LEADERBOARD_SCOPES[scope];
   if (!data) return null;
-  return { ...data, rows: applyYourPtsToRows(data.rows) };
+  const rowSlots = getLbViewportRowSlots();
+  const rows = expandLeaderboardRows({ ...data, scope }, rowSlots);
+  return { ...data, rows: applyYourPtsToRows(rows) };
 }
 
 function buildLeaderboardRow(entry, staggerIndex) {
@@ -1647,18 +1831,19 @@ function renderLeaderboardRows(listEl, scope) {
 function resolveLeaderboardAlign(data) {
   const rows = data?.rows ?? [];
   const rowCount = rows.length;
+  const viewportRows = getLbViewportRowSlots();
   if (rowCount <= 3) return 'top';
 
   const youIdx = rows.findIndex((row) => row.you);
   const above = data.playersAbove ?? 0;
   const below = data.playersBelow ?? 0;
 
-  if (rowCount >= LB_VIEWPORT_ROWS - 0.25 && above > 1 && below > 1) {
+  if (rowCount >= viewportRows - 0.25 && above > 1 && below > 1) {
     return 'center';
   }
 
-  if (rowCount < LB_VIEWPORT_ROWS) {
-    const nearListBottom = below <= Math.max(2, Math.ceil(LB_VIEWPORT_ROWS / 2));
+  if (rowCount < viewportRows) {
+    const nearListBottom = below <= Math.max(2, Math.ceil(viewportRows / 2));
     const youLowInWindow = youIdx >= 0 && youIdx >= rowCount - 2;
     if (nearListBottom || (youLowInWindow && below <= above)) return 'bottom';
     if (above <= 1 || youIdx <= 1) return 'top';
@@ -1678,13 +1863,42 @@ function applyLeaderboardListAlign(panel, scope) {
 
   if (align === 'top') {
     marginTop = '0px';
-  } else if (align === 'bottom' && rowCount < LB_VIEWPORT_ROWS) {
-    const slack = LB_VIEWPORT_ROWS - rowCount;
-    marginTop = `calc(var(--lb-row-step) * ${slack})`;
+  } else if (align === 'bottom' && rowCount < getLbViewportRowSlots() - 0.5) {
+    const slack = Math.max(0, getLbViewportRowSlots() - rowCount - 0.5);
+    marginTop = slack > 0 ? `calc(var(--lb-row-step) * ${slack})` : '0px';
   }
 
   listEl.style.setProperty('--lb-list-margin-top', marginTop);
   listEl.dataset.lbAlign = align;
+}
+
+function measureLeaderboardRowStepPx(panel) {
+  const sample =
+    panel?.querySelector('.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--peek)') ??
+    panel?.querySelector('.intro-corporate-leaderboard__row');
+  const list = panel?.querySelector('.intro-corporate-leaderboard__list');
+  if (!sample) return 28;
+  const rowH = sample.getBoundingClientRect().height;
+  const gap = list ? parseFloat(getComputedStyle(list).rowGap || getComputedStyle(list).gap) || 0 : 0;
+  return rowH + gap;
+}
+
+/** After layout, grow row count if the measured viewport still has empty space. */
+function ensureLeaderboardFillsViewport(panel, scope, listEl) {
+  const viewport = panel?.querySelector('.intro-corporate-leaderboard__viewport');
+  if (!panel || !viewport || !listEl) return;
+
+  const rowStep = measureLeaderboardRowStepPx(panel);
+  if (rowStep < 8) return;
+
+  const neededSlots = Math.ceil(viewport.clientHeight / rowStep);
+  const currentSlots = getLbViewportRowSlots();
+  if (neededSlots <= currentSlots + 0.25) return;
+
+  panel.style.setProperty('--lb-viewport-row-count', String(neededSlots));
+  renderLeaderboardRows(listEl, scope);
+  applyLeaderboardScopeMeta(panel, scope);
+  applyLeaderboardListAlign(panel, scope);
 }
 
 function refreshLeaderboardPanel() {
@@ -1695,6 +1909,9 @@ function refreshLeaderboardPanel() {
   renderLeaderboardRows(listEl, scope);
   applyLeaderboardScopeMeta(panel, scope);
   applyLeaderboardListAlign(panel, scope);
+  requestAnimationFrame(() => {
+    ensureLeaderboardFillsViewport(panel, scope, listEl);
+  });
 }
 
 function applyLeaderboardScopeMeta(panel, scope) {
@@ -1705,7 +1922,15 @@ function applyLeaderboardScopeMeta(panel, scope) {
   panel.dataset.leaderboardScope = scope;
   panel.setAttribute('aria-label', copy.aria);
   if (labelEl) labelEl.textContent = copy.label;
-  if (moreEl) moreEl.textContent = copy.more;
+  if (moreEl) {
+    if (scope === 'starclub') {
+      moreEl.textContent = copy.more;
+    } else {
+      const lastRank = copy.rows[copy.rows.length - 1]?.rank ?? 0;
+      const below = Math.max(0, (copy.totalPlayers ?? 0) - lastRank);
+      moreEl.textContent = below > 0 ? `${below.toLocaleString('en-US')} players below` : copy.more;
+    }
+  }
 }
 
 async function setLeaderboardScope(panel, scope, { animate = true } = {}) {
@@ -1757,6 +1982,11 @@ function wireLeaderboardScopes() {
   if (!panel || !scopes || scopes.dataset.wired === '1') return;
   scopes.dataset.wired = '1';
 
+  if (!window.__wfLeaderboardViewportWired) {
+    window.__wfLeaderboardViewportWired = true;
+    window.addEventListener('wf:leaderboard-viewport', refreshLeaderboardPanel);
+  }
+
   if (!panel.dataset.leaderboardScope) {
     panel.dataset.leaderboardScope = 'department';
   }
@@ -1788,7 +2018,6 @@ function tagCorporatePopTargets() {
     });
   }
   board.querySelector('.intro-corporate-player-profile')?.classList.add('intro-corporate-pop-target');
-  board.querySelector('.intro-corporate-feedback')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-leaderboard-panel')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-activity')?.classList.add('intro-corporate-pop-target');
 }
@@ -1886,18 +2115,14 @@ async function runCorporatePopSequence() {
   }
 
   const profile = board.querySelector('.intro-corporate-player-profile');
-  const feedbackCard = board.querySelector('.intro-corporate-feedback');
   await popCorporateTarget(profile, runId);
-  if (runId !== corporatePopRun) return;
-
-  await popCorporateTarget(feedbackCard, runId);
-  if (runId !== corporatePopRun) return;
-
-  await popCorporateTarget(leaderboard, runId);
   if (runId !== corporatePopRun) return;
 
   const activity = board.querySelector('.intro-corporate-activity');
   await popCorporateTarget(activity, runId);
+  if (runId !== corporatePopRun) return;
+
+  await popCorporateTarget(leaderboard, runId);
   if (runId !== corporatePopRun) return;
 
   finishCorporatePop();
@@ -1951,16 +2176,21 @@ function refreshCordSegmentEndpoints(seg) {
 
 function reorderSubwayCordGroups() {
   if (!connectorsEl || !isCorporateSkin()) return;
-  for (const seg of cordRopeSegments) {
-    const group = connectorsEl.querySelector(`.intro-cord[data-edge="${seg.key}"]`);
-    if (group) connectorsEl.appendChild(group);
+  for (const layerName of ['shadow', 'body', 'sheen', 'hit']) {
+    const layer = connectorsEl.querySelector(`.intro-connectors__layer--${layerName}`);
+    if (!layer) continue;
+    for (const seg of cordRopeSegments) {
+      const host = seg.cordHosts?.[layerName];
+      if (host) layer.appendChild(host);
+    }
   }
 }
 
 function refreshSubwayCordGeometry() {
   for (const seg of cordRopeSegments) refreshCordSegmentEndpoints(seg);
   applySubwayLaneBundles(cordRopeSegments);
-  applySubwayMidXLanes(cordRopeSegments);
+  const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
+  applySubwayMidXLanes(cordRopeSegments, midPitch);
   sortSubwayCordPaintOrder(cordRopeSegments);
   reorderSubwayCordGroups();
 }
@@ -2056,8 +2286,15 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
     seg.plugSettle = 0;
     applyCordRopePaths(cordFloatPhase);
 
-    const group = connectorsEl?.querySelector(`[data-edge="${edgeKeyStr}"]`);
-    group?.classList.add('is-plugging');
+    const plugHosts = seg.cordHosts
+      ? Object.values(seg.cordHosts)
+      : connectorsEl
+        ? Array.from(
+            connectorsEl.querySelectorAll(`[data-edge="${edgeKeyStr}"], [data-cord-edge="${edgeKeyStr}"]`)
+          )
+        : [];
+    for (const host of plugHosts) host.classList.add('is-plugging');
+    const group = seg.group ?? plugHosts[0] ?? null;
 
     const body = seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
     const sheen = seg.paths.find((p) => p.classList.contains('intro-cord-rope--sheen'));
@@ -2105,8 +2342,10 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
         path.style.strokeDashoffset = '0';
       }
       plugHead.remove();
-      group?.classList.remove('is-plugging');
-      group?.classList.add('is-filled');
+      for (const host of plugHosts) {
+        host.classList.remove('is-plugging');
+        host.classList.add('is-filled');
+      }
       if (seg.knotEnd) {
         seg.knotEnd.setAttribute('cx', String(seg.p3.x));
         seg.knotEnd.setAttribute('cy', String(seg.p3.y));
@@ -2226,6 +2465,15 @@ function getIncomingEdgesTo(moduleId) {
   return list;
 }
 
+function hasOutgoingEdges(moduleId) {
+  return getChapterEdges().some(([fromId]) => fromId === moduleId);
+}
+
+/** Final / hub finish nodes — hover highlights only the incoming tube, not the whole graph. */
+function isTerminalPathModule(moduleId) {
+  return !hasOutgoingEdges(moduleId);
+}
+
 function pickIncomingEdgeByPointer(wrap, incoming, clientY) {
   if (!incoming.length) return null;
   if (incoming.length === 1) return incoming[0].key;
@@ -2293,33 +2541,6 @@ function getFilledEdgesLeadingTo(moduleId) {
   return keys;
 }
 
-/** All visible upstream edges into `moduleId` (corporate path preview on hover). */
-function getStructuralEdgesLeadingTo(moduleId) {
-  const keys = new Set();
-  const byTarget = new Map();
-
-  for (const [fromId, toId] of getChapterEdges()) {
-    if (!isCordEdgeVisible(fromId, toId)) continue;
-    const key = edgeKey(fromId, toId);
-    if (!byTarget.has(toId)) byTarget.set(toId, []);
-    byTarget.get(toId).push({ from: fromId, key });
-  }
-
-  const queue = [moduleId];
-  const seen = new Set([moduleId]);
-  while (queue.length) {
-    const to = queue.shift();
-    for (const { from, key } of byTarget.get(to) ?? []) {
-      keys.add(key);
-      if (!seen.has(from)) {
-        seen.add(from);
-        queue.push(from);
-      }
-    }
-  }
-  return keys;
-}
-
 function pathHoverModuleSets(edgeKeys, focusModuleId) {
   const onPath = new Set();
   const fromIds = new Set();
@@ -2339,21 +2560,73 @@ function moduleIdsFromEdgeKeys(edgeKeys, focusModuleId) {
   return pathHoverModuleSets(edgeKeys, focusModuleId).onPath;
 }
 
-function syncPathHoverModuleClasses(displayKeys, focusModuleId) {
+/** Module the highlighted tube exits from (direct parent of hover target). */
+function pathHoverSourceModuleId(displayKeys, focusModuleId, incomingEdgeKey) {
+  if (incomingEdgeKey) {
+    const [from] = incomingEdgeKey.split('|');
+    return from || null;
+  }
+  const edgeKeys = displayKeys instanceof Set ? displayKeys : new Set(displayKeys);
+  for (const key of edgeKeys) {
+    const [from, to] = key.split('|');
+    if (to === focusModuleId && from) return from;
+  }
+  return null;
+}
+
+function resolvePathHoverSourceEdge(
+  moduleId,
+  { multiIngress, multiRoute, routeVariants, selectedRouteId, selectedKey, incoming }
+) {
+  if (multiIngress && selectedKey) return selectedKey;
+  if (multiRoute && selectedRouteId) {
+    const variant = routeVariants.find((v) => v.id === selectedRouteId) ?? routeVariants[0];
+    return (
+      variant.edges.find((key) => key.split('|')[1] === moduleId) ??
+      variant.edges[variant.edges.length - 1] ??
+      null
+    );
+  }
+  if (incoming.length === 1) return incoming[0].key;
+  return null;
+}
+
+function syncPathHoverModuleClasses(displayKeys, focusModuleId, incomingEdgeKey = null) {
   if (!pathMapEl) return;
   const edgeKeys = displayKeys instanceof Set ? displayKeys : new Set(displayKeys);
-  const { onPath, fromIds } = pathHoverModuleSets(edgeKeys, focusModuleId);
+  const { onPath } = pathHoverModuleSets(edgeKeys, focusModuleId);
+  const sourceId = pathHoverSourceModuleId(edgeKeys, focusModuleId, incomingEdgeKey);
 
   pathMapEl.querySelectorAll('.intro-module-wrap[data-module-anchor]').forEach((wrap) => {
     const id = wrap.dataset.moduleAnchor;
-    wrap.classList.toggle('is-path-hover-from', fromIds.has(id));
+    const isFocus = id === focusModuleId;
+    const card = wrap.querySelector('.module-card');
+    wrap.classList.toggle('is-path-hover-focus', isFocus);
+    wrap.classList.toggle('is-path-hover-source', id === sourceId && !isFocus);
     wrap.classList.toggle('is-path-hover-dim', !onPath.has(id));
+    if (card && (isCorporateSkin() || isSpaceSkin())) {
+      card.classList.toggle('is-hover-pop', isFocus);
+    }
   });
 }
 
 function clearPathHoverModuleClasses() {
   pathMapEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
-    wrap.classList.remove('is-path-hover-from', 'is-path-hover-dim', 'is-path-hover-focus');
+    wrap.classList.remove(
+      'is-path-hover-focus',
+      'is-path-hover-source',
+      'is-path-hover-dim',
+      'is-path-hover-from'
+    );
+    wrap.querySelector('.module-card')?.classList.remove('is-hover-pop');
+  });
+}
+
+function setCordPathHighlight(edgeKeyStr, highlight, filled = false) {
+  if (!connectorsEl || !edgeKeyStr) return;
+  connectorsEl.querySelectorAll(`[data-cord-edge="${edgeKeyStr}"]`).forEach((host) => {
+    host.classList.toggle('is-path-highlight', highlight);
+    host.classList.toggle('is-path-highlight--played', highlight && filled);
   });
 }
 
@@ -2432,9 +2705,11 @@ function clearModulePathHover() {
   pathMapEl?.removeAttribute('data-path-hover-module');
   pathMapEl?.removeAttribute('data-path-hover-edge');
   pathMapEl?.removeAttribute('data-path-hover-route');
-  connectorsEl?.querySelectorAll('.intro-cord.is-path-highlight').forEach((cord) => {
-    cord.classList.remove('is-path-highlight', 'is-path-highlight--played');
-  });
+  connectorsEl?.querySelectorAll('[data-cord-edge].is-path-highlight, .intro-cord.is-path-highlight').forEach(
+    (cord) => {
+      cord.classList.remove('is-path-highlight', 'is-path-highlight--played');
+    }
+  );
   clearPathHoverModuleClasses();
   hidePathHoverTooltips();
 }
@@ -2449,11 +2724,7 @@ function setModulePathHover(
   }
 
   const mod = moduleById(moduleId);
-  if (!mod) {
-    clearModulePathHover();
-    return;
-  }
-  if (mod.locked && !isCorporateSkin()) {
+  if (!mod || mod.locked) {
     clearModulePathHover();
     return;
   }
@@ -2464,8 +2735,8 @@ function setModulePathHover(
   const wrap = pathMapEl?.querySelector(`[data-module-anchor="${moduleId}"]`);
   const incoming = getIncomingEdgesTo(moduleId);
   const routeVariants = getPathRouteVariants(moduleId);
-  const multiIngress = incoming.length > 1;
   const multiRoute = Boolean(routeVariants?.length > 1);
+  const multiIngress = incoming.length > 1 && !multiRoute;
 
   let selectedKey = incomingEdgeKey;
   if (multiIngress && !selectedKey && wrap && clientY != null) {
@@ -2483,9 +2754,11 @@ function setModulePathHover(
     selectedRouteId = routeVariants[0].id;
   }
 
+  const hoverIncomingKey =
+    multiIngress || incoming.length === 1 ? selectedKey ?? incoming[0]?.key ?? null : null;
   if (
     modulePathHoverId === moduleId &&
-    modulePathHoverIncomingKey === (multiIngress ? selectedKey : null) &&
+    modulePathHoverIncomingKey === hoverIncomingKey &&
     modulePathHoverRouteId === (multiRoute ? selectedRouteId : null)
   ) {
     return;
@@ -2494,30 +2767,36 @@ function setModulePathHover(
   if (isCorporateSkin() || isSpaceSkin()) playModuleHoverClick();
 
   modulePathHoverId = moduleId;
-  modulePathHoverIncomingKey = multiIngress ? selectedKey : null;
+  modulePathHoverIncomingKey = hoverIncomingKey;
   modulePathHoverRouteId = multiRoute ? selectedRouteId : null;
 
   let filledKeys = new Set();
   let displayKeys = new Set();
 
-  if (multiIngress && selectedKey) {
-    filledKeys = getFilledEdgesForIncoming(selectedKey);
-    displayKeys = new Set(filledKeys);
-    if (isCorporateSkin()) {
-      for (const key of getStructuralEdgesLeadingTo(moduleId)) displayKeys.add(key);
-      displayKeys.add(selectedKey);
-    }
-  } else if (multiRoute && selectedRouteId) {
+  if (multiRoute && selectedRouteId) {
     const variant = routeVariants.find((v) => v.id === selectedRouteId) ?? routeVariants[0];
     for (const key of variant.edges) displayKeys.add(key);
     for (const key of variant.edges) {
       if (isEdgeFilled(key)) filledKeys.add(key);
     }
+  } else if (multiIngress && selectedKey) {
+    filledKeys = getFilledEdgesForIncoming(selectedKey);
+    displayKeys = new Set(filledKeys);
+    displayKeys.add(selectedKey);
+  } else if (
+    (isCorporateSkin() || isSpaceSkin()) &&
+    isTerminalPathModule(moduleId) &&
+    !multiRoute &&
+    incoming.length >= 1
+  ) {
+    const localKey = hoverIncomingKey ?? incoming[0]?.key;
+    displayKeys = localKey ? new Set([localKey]) : new Set();
+    if (localKey && isEdgeFilled(localKey)) filledKeys.add(localKey);
   } else {
     filledKeys = getFilledEdgesLeadingTo(moduleId);
     displayKeys = new Set(filledKeys);
-    if (isCorporateSkin()) {
-      for (const key of getStructuralEdgesLeadingTo(moduleId)) displayKeys.add(key);
+    if ((isCorporateSkin() || isSpaceSkin()) && incoming.length === 1) {
+      displayKeys.add(incoming[0].key);
     }
   }
 
@@ -2528,8 +2807,9 @@ function setModulePathHover(
   if (selectedRouteId) pathMapEl?.setAttribute('data-path-hover-route', selectedRouteId);
   else pathMapEl?.removeAttribute('data-path-hover-route');
 
-  connectorsEl?.querySelectorAll('.intro-cord').forEach((cord) => {
-    const key = cord.dataset.edge;
+  connectorsEl?.querySelectorAll('.intro-cord[data-edge], .intro-cord[data-cord-edge]').forEach((cord) => {
+    const key = cord.dataset.edge || cord.dataset.cordEdge;
+    if (!key) return;
     const onPath = displayKeys.has(key);
     const filled = cord.classList.contains('is-filled');
     let highlight = false;
@@ -2542,14 +2822,21 @@ function setModulePathHover(
     } else {
       highlight = onPath && filled;
     }
-    cord.classList.toggle('is-path-highlight', highlight);
-    cord.classList.toggle('is-path-highlight--played', highlight && filled);
+    setCordPathHighlight(key, highlight, filled);
   });
 
-  syncPathHoverModuleClasses(moduleIdsFromEdgeKeys(displayKeys, moduleId));
+  const sourceEdgeKey = resolvePathHoverSourceEdge(moduleId, {
+    multiIngress,
+    multiRoute,
+    routeVariants,
+    selectedRouteId,
+    selectedKey,
+    incoming
+  });
+  syncPathHoverModuleClasses(displayKeys, moduleId, sourceEdgeKey);
 
   const tooltipKeys = new Set(filledKeys);
-  if (multiIngress && selectedKey) tooltipKeys.add(selectedKey);
+  if (sourceEdgeKey) tooltipKeys.add(sourceEdgeKey);
   showPathHoverTooltipsForEdges(tooltipKeys);
 }
 
@@ -2564,10 +2851,15 @@ function scheduleClearModulePathHover() {
 function bindModulePathHover(wrap, moduleId) {
   const incoming = getIncomingEdgesTo(moduleId);
   const routeVariants = getPathRouteVariants(moduleId);
-  const multiIngress = incoming.length > 1;
   const multiRoute = Boolean(routeVariants?.length > 1);
+  const multiIngress = incoming.length > 1 && !multiRoute;
 
   const onPointer = (e) => {
+    const mod = moduleById(moduleId);
+    if (!mod || mod.locked) {
+      clearModulePathHover();
+      return;
+    }
     if (multiIngress || multiRoute) {
       setModulePathHover(moduleId, { clientY: e.clientY });
     } else {
@@ -2638,6 +2930,7 @@ function pointerOnCordPath(pathEl, clientX, clientY) {
 function bindCordHitTooltip(seg) {
   if (!seg.hitPath) return;
   const label = getEdgeChoiceLabel(seg.key);
+  const { toId } = parseEdgeKey(seg.key);
   const body = () =>
     seg.centerlinePath ?? seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
   const showAtPoint = (pt) => {
@@ -2656,6 +2949,15 @@ function bindCordHitTooltip(seg) {
       seg.stretch.ty = pt.y;
       seg.stretch.tAmt = Math.min(1, Math.hypot(pt.x - mid.x, pt.y - mid.y) / 52);
       applyCordRopePaths(cordFloatPhase);
+    }
+
+    if (isCorporateSkin() || isSpaceSkin()) {
+      const toMod = moduleById(toId);
+      if (toMod && !toMod.locked) {
+        setModulePathHover(toId, { incomingEdgeKey: seg.key, clientY: e.clientY });
+      } else {
+        clearModulePathHover();
+      }
     }
 
     showAtPoint(pt);
@@ -2699,9 +3001,12 @@ function bindCordHitTooltip(seg) {
 
   seg.hitPath.addEventListener('pointerup', endCordDrag);
   seg.hitPath.addEventListener('pointercancel', endCordDrag);
-  seg.hitPath.addEventListener('pointerleave', () => {
+  seg.hitPath.addEventListener('pointerleave', (e) => {
     if (cordDragSeg === seg) return;
-    if (modulePathHoverId) return;
+    const related = e.relatedTarget;
+    if (related?.closest?.(`[data-module-anchor="${toId}"]`)) return;
+    if (related?.closest?.('[data-cord-edge]')) return;
+    if (isCorporateSkin() || isSpaceSkin()) scheduleClearModulePathHover();
     hideCordTooltip();
   });
 }
@@ -2887,7 +3192,8 @@ function measureIntroCords({ onReady } = {}) {
   }
 
   applySubwayLaneBundles(cordRopeSegments);
-  applySubwayMidXLanes(cordRopeSegments);
+  const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
+  applySubwayMidXLanes(cordRopeSegments, midPitch);
   sortSubwayCordPaintOrder(cordRopeSegments);
 
   const w = Math.max(pathMapEl.offsetWidth, mapRect.width);
@@ -2903,14 +3209,74 @@ function measureIntroCords({ onReady } = {}) {
   connectorsEl.classList.toggle('intro-connectors--subway', useSubway);
   ensureCordDefs();
 
+  const subwayLayers = useSubway
+    ? ['shadow', 'body', 'sheen', 'hit'].reduce((acc, name) => {
+        const layer = document.createElementNS(NS, 'g');
+        layer.setAttribute('class', `intro-connectors__layer intro-connectors__layer--${name}`);
+        connectorsEl.appendChild(layer);
+        acc[name] = layer;
+        return acc;
+      }, /** @type {Record<string, SVGGElement>} */ ({}))
+    : null;
+
+  const makeSubwayCordHost = (seg, filled) => {
+    const host = document.createElementNS(NS, 'g');
+    host.classList.add('intro-cord', 'intro-cord--subway');
+    if (filled) host.classList.add('is-filled');
+    if (introState.pluggingEdge === seg.key) host.classList.add('is-plugging');
+    host.dataset.cordEdge = seg.key;
+    return host;
+  };
+
   for (const seg of cordRopeSegments) {
     const filled = isEdgeFilled(seg.key);
+
+    if (useSubway && seg.isSubway && subwayLayers) {
+      seg.cordHosts = {};
+      const ropeLayers = [
+        { className: 'intro-cord-rope--shadow', filled: false, layerName: 'shadow' },
+        { className: 'intro-cord-rope--body', filled: true, layerName: 'body' },
+        { className: 'intro-cord-rope--sheen', filled: false, layerName: 'sheen' }
+      ];
+
+      for (const layer of ropeLayers) {
+        const host = makeSubwayCordHost(seg, filled);
+        const path = document.createElementNS(NS, 'path');
+        path.setAttribute('class', `intro-cord-rope ${layer.className}`);
+        path.setAttribute('fill', 'none');
+        if (layer.filled) path.classList.add('intro-cord-rope--active');
+        host.appendChild(path);
+        seg.paths.push(path);
+        subwayLayers[layer.layerName].appendChild(host);
+        seg.cordHosts[layer.layerName] = host;
+        if (layer.layerName === 'body') seg.group = host;
+      }
+
+      if (filled) {
+        const hitHost = makeSubwayCordHost(seg, filled);
+        const hit = document.createElementNS(NS, 'path');
+        hit.setAttribute('class', 'intro-cord-hit');
+        hit.setAttribute('fill', 'none');
+        hit.setAttribute('stroke', 'transparent');
+        hit.setAttribute('stroke-width', '32');
+        hit.setAttribute('stroke-linecap', 'round');
+        hit.setAttribute('stroke-linejoin', 'round');
+        hitHost.appendChild(hit);
+        seg.hitPath = hit;
+        subwayLayers.hit.appendChild(hitHost);
+        seg.cordHosts.hit = hitHost;
+        bindCordHitTooltip(seg);
+      }
+      continue;
+    }
+
     const group = document.createElementNS(NS, 'g');
     group.classList.add('intro-cord');
     if (seg.isSubway) group.classList.add('intro-cord--subway');
     if (filled) group.classList.add('is-filled');
     if (introState.pluggingEdge === seg.key) group.classList.add('is-plugging');
     group.dataset.edge = seg.key;
+    seg.group = group;
 
     const layers = [
       { className: 'intro-cord-rope--shadow', filled: false },
@@ -3514,6 +3880,8 @@ window.addEventListener('wf-module-layout-change', () => {
 
 window.addEventListener('wf-corporate-volumes-cheat', () => {
   applyCorporateVolumeCheatUi();
+  syncCorporatePathMapToCatalog();
+  if (isCorporateSkin() && pathMapMatchesCatalog()) queueIntroCordLayout();
 });
 
 window.addEventListener('wf-sync-next-play-glow', () => {
@@ -3542,7 +3910,26 @@ window.addEventListener('wf-progress-change', (event) => {
       applyCorporateVolumeCheatUi();
       if (isCorporateSkin() && getCurrentChapter() === 1) revealCorporateBoard();
     }
-    patchModulesFromRuntime(unlocked);
+    if (isCorporateSkin()) {
+      syncCorporatePathMapToCatalog();
+      if (pathMapMatchesCatalog()) patchModulesFromRuntime(unlocked);
+      else queueIntroCordLayout();
+    } else {
+      patchModulesFromRuntime(unlocked);
+    }
+    syncPlayerProfile();
+    queueIntroCordLayout();
+    return;
+  }
+  if (event.detail?.lockVolume != null || event.detail?.unlockVolume != null) {
+    if (usesIntroSidePanel()) applyCorporateVolumeCheatUi();
+    if (isCorporateSkin()) {
+      if (usesIntroSidePanel()) setCatalogChapter(getCorporateViewVolume());
+      renderModules();
+    } else {
+      patchModulesFromRuntime(event.detail?.newlyUnlocked ?? []);
+    }
+    refreshLeaderboardPanel();
     syncPlayerProfile();
     queueIntroCordLayout();
     return;
