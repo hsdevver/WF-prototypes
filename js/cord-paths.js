@@ -253,6 +253,9 @@ export const SUBWAY_LANE_PITCH = 11;
 /** Horizontal spacing between vertical subway trunks (avoids tube crossings). */
 export const SUBWAY_MID_LANE_PITCH = 18;
 
+/** Extra exit spacing when multiple tubes leave the same card edge. */
+export const SUBWAY_FROM_FAN_PITCH = 15;
+
 /**
  * Stack fork/merge endpoints on the same card edge so tubes exit inline (no gap).
  * @param {{ key: string, isSubway?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number} }[]} segments
@@ -261,14 +264,14 @@ export const SUBWAY_MID_LANE_PITCH = 18;
 export function applySubwayLaneBundles(segments, lanePitch = SUBWAY_LANE_PITCH) {
   if (!segments?.length) return;
 
-  const bundle = (list, end) => {
+  const bundle = (list, end, pitch = lanePitch) => {
     if (list.length < 2) return;
     list.sort((a, b) => (end === 'p0' ? a.p0.y - b.p0.y : a.p3.y - b.p3.y));
     const avgY =
       list.reduce((sum, seg) => sum + (end === 'p0' ? seg.p0.y : seg.p3.y), 0) / list.length;
     const n = list.length;
     list.forEach((seg, i) => {
-      const y = avgY + (i - (n - 1) / 2) * lanePitch;
+      const y = avgY + (i - (n - 1) / 2) * pitch;
       if (end === 'p0') seg.p0 = { x: seg.p0.x, y };
       else seg.p3 = { x: seg.p3.x, y };
     });
@@ -288,8 +291,20 @@ export function applySubwayLaneBundles(segments, lanePitch = SUBWAY_LANE_PITCH) 
     toBuckets.get(toKey).push(seg);
   }
 
-  for (const list of fromBuckets.values()) bundle(list, 'p0');
-  for (const list of toBuckets.values()) bundle(list, 'p3');
+  const bundleIncoming = (list) => {
+    if (list.length < 2) return;
+    const alongSpread =
+      Math.max(...list.map((s) => s.anchorOpts?.toAlong ?? 0.5)) -
+      Math.min(...list.map((s) => s.anchorOpts?.toAlong ?? 0.5));
+    if (alongSpread > 0.08) return;
+    bundle(list, 'p3', lanePitch);
+  };
+
+  for (const list of fromBuckets.values()) {
+    const pitch = list.length > 1 ? SUBWAY_FROM_FAN_PITCH : lanePitch;
+    bundle(list, 'p0', pitch);
+  }
+  for (const list of toBuckets.values()) bundleIncoming(list);
 }
 
 /**
@@ -318,12 +333,15 @@ export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
     if (list.length < 2) continue;
 
     list.sort((a, b) => {
-      const ay = (a.seg.p0.y + a.seg.p3.y) * 0.5;
-      const by = (b.seg.p0.y + b.seg.p3.y) * 0.5;
-      return ay - by;
+      const ay = a.seg.p0.y;
+      const by = b.seg.p0.y;
+      if (ay !== by) return ay - by;
+      return a.seg.p3.y - b.seg.p3.y;
     });
 
     const n = list.length;
+    const lanePitch =
+      n >= 4 ? SUBWAY_MID_LANE_PITCH + 6 : n >= 3 ? SUBWAY_MID_LANE_PITCH + 3 : pitch;
     list.forEach((item, i) => {
       const { seg, rl } = item;
       const from = rl ? seg.p0 : seg.p3;
@@ -334,7 +352,7 @@ export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
       const exitX = from.x + dirX * laneGap;
       const entryX = to.x - dirX * laneGap;
       const baseMidX = (exitX + entryX) * 0.5;
-      const offset = (i - (n - 1) / 2) * pitch;
+      const offset = (i - (n - 1) / 2) * lanePitch;
       seg.anchorOpts = { ...seg.anchorOpts, subwayMidX: baseMidX + offset };
     });
   }
@@ -342,17 +360,23 @@ export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
 
 const SUBWAY_PAINT_DY_EPS = 4;
 
+/** Signed vertical travel for a right→left subway edge (source → target). */
+function subwayTrunkDy(seg) {
+  const rl = seg.fromSide === 'right' && seg.toSide === 'left';
+  return rl ? seg.p3.y - seg.p0.y : seg.p0.y - seg.p3.y;
+}
+
 /**
  * Paint-order for subway cords: downward edges under upward edges at elbows.
  * SVG stacks later siblings on top; call after lane bundling / midX stagger.
- * @param {{ key: string, isSubway?: boolean, p0: {x:number,y:number}, p3: {x:number,y:number} }[]} segments
+ * @param {{ key: string, isSubway?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number} }[]} segments
  */
 export function sortSubwayCordPaintOrder(segments) {
   if (!segments?.length) return;
 
   const tier = (seg) => {
     if (!seg.isSubway) return 1;
-    const dy = seg.p3.y - seg.p0.y;
+    const dy = subwayTrunkDy(seg);
     if (dy > SUBWAY_PAINT_DY_EPS) return 0;
     if (dy < -SUBWAY_PAINT_DY_EPS) return 2;
     return 1;
@@ -362,9 +386,8 @@ export function sortSubwayCordPaintOrder(segments) {
     const ta = tier(a);
     const tb = tier(b);
     if (ta !== tb) return ta - tb;
-    const ay = (a.p0.y + a.p3.y) * 0.5;
-    const by = (b.p0.y + b.p3.y) * 0.5;
-    if (ay !== by) return ay - by;
+    if (a.p0.y !== b.p0.y) return a.p0.y - b.p0.y;
+    if (a.p3.y !== b.p3.y) return a.p3.y - b.p3.y;
     return a.key.localeCompare(b.key);
   });
 }

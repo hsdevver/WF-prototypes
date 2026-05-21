@@ -30,7 +30,8 @@ let unlocked = false;
 let lastPlayAt = 0;
 const MIN_INTERVAL_MS = 70;
 const BASE_HOVER_VOLUME = 0.42;
-const BASE_LOCKED_REJECT_VOLUME = 0.5;
+/** Locked tap — half the effective volume of module hover click. */
+const LOCKED_REJECT_HOVER_RATIO = 0.5;
 const DEFAULT_HOVER_SOUND_VOLUME = 0.42;
 /** Matches workflow-intro.css --stagger-module */
 export const MODULE_REVEAL_STAGGER_MS = 320;
@@ -224,7 +225,9 @@ export async function playLockedModuleForceField() {
   lastPlayAt = now;
 
   const file = pickForceFieldFile();
-  if (file) playAssetSound(file, effectiveHoverVolume(BASE_LOCKED_REJECT_VOLUME));
+  if (file) {
+    playAssetSound(file, effectiveHoverVolume(BASE_HOVER_VOLUME * LOCKED_REJECT_HOVER_RATIO));
+  }
 }
 
 /** Synthesized mechanical key / button press (~45ms). */

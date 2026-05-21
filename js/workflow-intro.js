@@ -26,6 +26,7 @@ import {
   CHAPTER_1_END_MODULE_ID,
   CHAPTER_2_END_MODULE_ID,
   getChapterAriaLabel,
+  getPathRouteVariants,
   MODULE_SKILL_FOCUS
 } from './consequence-flow.js';
 import {
@@ -1361,6 +1362,20 @@ const SKILL_DEFAULT_FEEDBACK = {
   strength: 'Showing up on the path counts—finish a module to see what to keep doing.'
 };
 
+/** Shown on profile skill bars whenever score > 0 but no played modules yet. */
+const SKILL_ACTIVE_FALLBACK = {
+  empathy: 72,
+  ownership: 68,
+  communication: 74
+};
+
+function resolvePlayerSkillValue(skillKey, skills, score) {
+  const measured = skills[skillKey];
+  if (measured != null) return measured;
+  if (score > 0) return SKILL_ACTIVE_FALLBACK[skillKey] ?? 70;
+  return null;
+}
+
 const LEADERBOARD_SCOPE_ORDER = { department: 0, starclub: 1, company: 2 };
 
 const STARCLUB_PEER_NAMES = [
@@ -1486,7 +1501,15 @@ function syncPlayerProfile() {
   const stars = totalStarsCollected();
   const score = yourPlayerPoints();
   const skills = aggregatePlayerSkills();
-  const coaching = feedbackForSkills(skills);
+  const skillsActive = score > 0;
+  const displaySkills = {
+    empathy: resolvePlayerSkillValue('empathy', skills, score),
+    ownership: resolvePlayerSkillValue('ownership', skills, score),
+    communication: resolvePlayerSkillValue('communication', skills, score)
+  };
+  const coaching = feedbackForSkills(displaySkills);
+
+  profile.classList.toggle('is-skills-active', skillsActive);
 
   const nameEl = profile.querySelector('[data-player-name]');
   if (nameEl) nameEl.textContent = PLAYER_DISPLAY_NAME;
@@ -1500,9 +1523,12 @@ function syncPlayerProfile() {
   }
 
   for (const skill of ['empathy', 'ownership', 'communication']) {
-    const value = skills[skill];
+    const value = displaySkills[skill];
+    const skillEl = profile.querySelector(`[data-skill="${skill}"]`);
     const pctEl = profile.querySelector(`[data-skill-pct="${skill}"]`);
     const fillEl = profile.querySelector(`[data-skill-fill="${skill}"]`);
+    const active = skillsActive && value != null;
+    skillEl?.classList.toggle('is-active', active);
     if (pctEl) pctEl.textContent = value == null ? '—' : `${value}%`;
     if (fillEl) fillEl.style.width = value == null ? '0%' : `${value}%`;
   }
@@ -2142,6 +2168,7 @@ let cordTooltipEl = null;
 let cordTooltipHideTimer = 0;
 let modulePathHoverId = null;
 let modulePathHoverIncomingKey = null;
+let modulePathHoverRouteId = null;
 let modulePathHoverClearTimer = 0;
 const pathHoverTooltips = new Map();
 
@@ -2210,6 +2237,26 @@ function pickIncomingEdgeByPointer(wrap, incoming, clientY) {
   return incoming[idx].key;
 }
 
+/** @param {HTMLElement} wrap @param {{ id: string, along?: number }[]} variants @param {number} clientY */
+function pickRouteVariantByPointer(wrap, variants, clientY) {
+  if (!variants.length) return null;
+  const card = wrap.querySelector('.module-card') ?? wrap;
+  const rect = card.getBoundingClientRect();
+  if (rect.height < 1) return variants[0].id;
+  const t = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+  let best = variants[0];
+  let bestDist = Infinity;
+  for (const variant of variants) {
+    const along = variant.along ?? 0.5;
+    const dist = Math.abs(along - t);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = variant;
+    }
+  }
+  return best.id;
+}
+
 /** Filled upstream path for one incoming branch into `moduleId`. */
 function getFilledEdgesForIncoming(incomingKey) {
   const [fromId] = incomingKey.split('|');
@@ -2244,6 +2291,70 @@ function getFilledEdgesLeadingTo(moduleId) {
     }
   }
   return keys;
+}
+
+/** All visible upstream edges into `moduleId` (corporate path preview on hover). */
+function getStructuralEdgesLeadingTo(moduleId) {
+  const keys = new Set();
+  const byTarget = new Map();
+
+  for (const [fromId, toId] of getChapterEdges()) {
+    if (!isCordEdgeVisible(fromId, toId)) continue;
+    const key = edgeKey(fromId, toId);
+    if (!byTarget.has(toId)) byTarget.set(toId, []);
+    byTarget.get(toId).push({ from: fromId, key });
+  }
+
+  const queue = [moduleId];
+  const seen = new Set([moduleId]);
+  while (queue.length) {
+    const to = queue.shift();
+    for (const { from, key } of byTarget.get(to) ?? []) {
+      keys.add(key);
+      if (!seen.has(from)) {
+        seen.add(from);
+        queue.push(from);
+      }
+    }
+  }
+  return keys;
+}
+
+function pathHoverModuleSets(edgeKeys, focusModuleId) {
+  const onPath = new Set();
+  const fromIds = new Set();
+  if (focusModuleId) onPath.add(focusModuleId);
+  for (const key of edgeKeys) {
+    const [from, to] = key.split('|');
+    if (from) {
+      fromIds.add(from);
+      onPath.add(from);
+    }
+    if (to) onPath.add(to);
+  }
+  return { onPath, fromIds };
+}
+
+function moduleIdsFromEdgeKeys(edgeKeys, focusModuleId) {
+  return pathHoverModuleSets(edgeKeys, focusModuleId).onPath;
+}
+
+function syncPathHoverModuleClasses(displayKeys, focusModuleId) {
+  if (!pathMapEl) return;
+  const edgeKeys = displayKeys instanceof Set ? displayKeys : new Set(displayKeys);
+  const { onPath, fromIds } = pathHoverModuleSets(edgeKeys, focusModuleId);
+
+  pathMapEl.querySelectorAll('.intro-module-wrap[data-module-anchor]').forEach((wrap) => {
+    const id = wrap.dataset.moduleAnchor;
+    wrap.classList.toggle('is-path-hover-from', fromIds.has(id));
+    wrap.classList.toggle('is-path-hover-dim', !onPath.has(id));
+  });
+}
+
+function clearPathHoverModuleClasses() {
+  pathMapEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+    wrap.classList.remove('is-path-hover-from', 'is-path-hover-dim', 'is-path-hover-focus');
+  });
 }
 
 function ensurePathHoverTooltipLayer() {
@@ -2316,23 +2427,33 @@ function clearModulePathHover() {
   modulePathHoverClearTimer = 0;
   modulePathHoverId = null;
   modulePathHoverIncomingKey = null;
+  modulePathHoverRouteId = null;
   pathMapEl?.classList.remove('is-module-path-hover');
   pathMapEl?.removeAttribute('data-path-hover-module');
   pathMapEl?.removeAttribute('data-path-hover-edge');
+  pathMapEl?.removeAttribute('data-path-hover-route');
   connectorsEl?.querySelectorAll('.intro-cord.is-path-highlight').forEach((cord) => {
-    cord.classList.remove('is-path-highlight');
+    cord.classList.remove('is-path-highlight', 'is-path-highlight--played');
   });
+  clearPathHoverModuleClasses();
   hidePathHoverTooltips();
 }
 
-function setModulePathHover(moduleId, { incomingEdgeKey = null, clientY = null } = {}) {
+function setModulePathHover(
+  moduleId,
+  { incomingEdgeKey = null, routeVariantId = null, clientY = null } = {}
+) {
   if (!moduleId || introState.plugActive || introState.pluggingEdge || introState.handoffRunning) {
     clearModulePathHover();
     return;
   }
 
   const mod = moduleById(moduleId);
-  if (!mod || mod.locked) {
+  if (!mod) {
+    clearModulePathHover();
+    return;
+  }
+  if (mod.locked && !isCorporateSkin()) {
     clearModulePathHover();
     return;
   }
@@ -2342,7 +2463,10 @@ function setModulePathHover(moduleId, { incomingEdgeKey = null, clientY = null }
 
   const wrap = pathMapEl?.querySelector(`[data-module-anchor="${moduleId}"]`);
   const incoming = getIncomingEdgesTo(moduleId);
+  const routeVariants = getPathRouteVariants(moduleId);
   const multiIngress = incoming.length > 1;
+  const multiRoute = Boolean(routeVariants?.length > 1);
+
   let selectedKey = incomingEdgeKey;
   if (multiIngress && !selectedKey && wrap && clientY != null) {
     selectedKey = pickIncomingEdgeByPointer(wrap, incoming, clientY);
@@ -2351,39 +2475,80 @@ function setModulePathHover(moduleId, { incomingEdgeKey = null, clientY = null }
     selectedKey = pickIncomingEdgeByPointer(wrap, incoming, wrap.getBoundingClientRect().top + 1);
   }
 
+  let selectedRouteId = routeVariantId;
+  if (multiRoute && !selectedRouteId && wrap && clientY != null) {
+    selectedRouteId = pickRouteVariantByPointer(wrap, routeVariants, clientY);
+  }
+  if (multiRoute && !selectedRouteId) {
+    selectedRouteId = routeVariants[0].id;
+  }
+
   if (
     modulePathHoverId === moduleId &&
-    modulePathHoverIncomingKey === (multiIngress ? selectedKey : null)
+    modulePathHoverIncomingKey === (multiIngress ? selectedKey : null) &&
+    modulePathHoverRouteId === (multiRoute ? selectedRouteId : null)
   ) {
     return;
   }
 
+  if (isCorporateSkin() || isSpaceSkin()) playModuleHoverClick();
+
   modulePathHoverId = moduleId;
   modulePathHoverIncomingKey = multiIngress ? selectedKey : null;
+  modulePathHoverRouteId = multiRoute ? selectedRouteId : null;
 
-  const edgeKeys = multiIngress && selectedKey
-    ? getFilledEdgesForIncoming(selectedKey)
-    : getFilledEdgesLeadingTo(moduleId);
+  let filledKeys = new Set();
+  let displayKeys = new Set();
+
+  if (multiIngress && selectedKey) {
+    filledKeys = getFilledEdgesForIncoming(selectedKey);
+    displayKeys = new Set(filledKeys);
+    if (isCorporateSkin()) {
+      for (const key of getStructuralEdgesLeadingTo(moduleId)) displayKeys.add(key);
+      displayKeys.add(selectedKey);
+    }
+  } else if (multiRoute && selectedRouteId) {
+    const variant = routeVariants.find((v) => v.id === selectedRouteId) ?? routeVariants[0];
+    for (const key of variant.edges) displayKeys.add(key);
+    for (const key of variant.edges) {
+      if (isEdgeFilled(key)) filledKeys.add(key);
+    }
+  } else {
+    filledKeys = getFilledEdgesLeadingTo(moduleId);
+    displayKeys = new Set(filledKeys);
+    if (isCorporateSkin()) {
+      for (const key of getStructuralEdgesLeadingTo(moduleId)) displayKeys.add(key);
+    }
+  }
 
   pathMapEl?.classList.add('is-module-path-hover');
   pathMapEl?.setAttribute('data-path-hover-module', moduleId);
   if (selectedKey) pathMapEl?.setAttribute('data-path-hover-edge', selectedKey);
   else pathMapEl?.removeAttribute('data-path-hover-edge');
+  if (selectedRouteId) pathMapEl?.setAttribute('data-path-hover-route', selectedRouteId);
+  else pathMapEl?.removeAttribute('data-path-hover-route');
 
   connectorsEl?.querySelectorAll('.intro-cord').forEach((cord) => {
     const key = cord.dataset.edge;
+    const onPath = displayKeys.has(key);
+    const filled = cord.classList.contains('is-filled');
     let highlight = false;
-    if (multiIngress && selectedKey) {
-      highlight =
-        key === selectedKey ||
-        (edgeKeys.has(key) && cord.classList.contains('is-filled'));
+    if (isCorporateSkin()) {
+      highlight = onPath;
+    } else if (multiIngress && selectedKey) {
+      highlight = key === selectedKey || (onPath && filled);
+    } else if (multiRoute) {
+      highlight = onPath;
     } else {
-      highlight = edgeKeys.has(key) && cord.classList.contains('is-filled');
+      highlight = onPath && filled;
     }
     cord.classList.toggle('is-path-highlight', highlight);
+    cord.classList.toggle('is-path-highlight--played', highlight && filled);
   });
 
-  const tooltipKeys = new Set(edgeKeys);
+  syncPathHoverModuleClasses(moduleIdsFromEdgeKeys(displayKeys, moduleId));
+
+  const tooltipKeys = new Set(filledKeys);
   if (multiIngress && selectedKey) tooltipKeys.add(selectedKey);
   showPathHoverTooltipsForEdges(tooltipKeys);
 }
@@ -2398,10 +2563,12 @@ function scheduleClearModulePathHover() {
 
 function bindModulePathHover(wrap, moduleId) {
   const incoming = getIncomingEdgesTo(moduleId);
+  const routeVariants = getPathRouteVariants(moduleId);
   const multiIngress = incoming.length > 1;
+  const multiRoute = Boolean(routeVariants?.length > 1);
 
   const onPointer = (e) => {
-    if (multiIngress) {
+    if (multiIngress || multiRoute) {
       setModulePathHover(moduleId, { clientY: e.clientY });
     } else {
       setModulePathHover(moduleId);
@@ -2786,6 +2953,7 @@ function measureIntroCords({ onReady } = {}) {
     connectorsEl.appendChild(group);
   }
 
+  reorderSubwayCordGroups();
   applyCordRopePaths(0);
 
   requestAnimationFrame(() => {
@@ -2821,7 +2989,8 @@ function measureIntroCords({ onReady } = {}) {
     if (!introState.pluggingEdge) startCordFloat();
     if (modulePathHoverId) {
       setModulePathHover(modulePathHoverId, {
-        incomingEdgeKey: modulePathHoverIncomingKey ?? undefined
+        incomingEdgeKey: modulePathHoverIncomingKey ?? undefined,
+        routeVariantId: modulePathHoverRouteId ?? undefined
       });
     }
     onReady?.();

@@ -488,10 +488,10 @@ export const CHAPTER_3_EDGES = [
 export const CHAPTER_3_CORD_ANCHORS = {
   'c3m1|c3m2a': { from: 'right', to: 'left', fromAlong: 0.34, toAlong: 0.42, slack: 1.14, sagSign: -1 },
   'c3m1|c3m2b': { from: 'right', to: 'left', fromAlong: 0.66, toAlong: 0.58, slack: 1.14, sagSign: 1 },
-  'c3m2a|c3m3a': { from: 'right', to: 'left', fromAlong: 0.48, toAlong: 0.32, slack: 1.1, sagSign: -1 },
-  'c3m2a|c3m3': { from: 'right', to: 'left', fromAlong: 0.52, toAlong: 0.5, slack: 1.12, sagSign: -1 },
-  'c3m2b|c3m3b': { from: 'right', to: 'left', fromAlong: 0.48, toAlong: 0.68, slack: 1.1, sagSign: 1 },
-  'c3m2b|c3m3': { from: 'right', to: 'left', fromAlong: 0.52, toAlong: 0.5, slack: 1.12, sagSign: 1 },
+  'c3m2a|c3m3a': { from: 'right', to: 'left', fromAlong: 0.44, toAlong: 0.3, slack: 1.1, sagSign: -1 },
+  'c3m2a|c3m3': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.42, slack: 1.12, sagSign: -1 },
+  'c3m2b|c3m3b': { from: 'right', to: 'left', fromAlong: 0.7, toAlong: 0.74, slack: 1.1, sagSign: 1 },
+  'c3m2b|c3m3': { from: 'right', to: 'left', fromAlong: 0.36, toAlong: 0.56, slack: 1.12, sagSign: 1 },
   'c3m3|c3m4': { from: 'right', to: 'left', slack: 1.06, sagSign: 1 },
   'c3m3a|c3m4': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.36, slack: 1.1, sagSign: -1 },
   'c3m3b|c3m4': { from: 'right', to: 'left', fromAlong: 0.5, toAlong: 0.64, slack: 1.1, sagSign: 1 },
@@ -653,6 +653,58 @@ export const CHAPTER_3_PLAY_SCENARIOS = {
 
 export const CHAPTER_2_END_MODULE_ID = 'c2m3';
 export const CHAPTER_3_END_MODULE_ID = 'c3m5';
+
+/**
+ * Distinct upstream routes into hub / final modules (for path-hover picker).
+ * `along` is 0–1 band on the target card for pointer selection (top → bottom).
+ */
+export const PATH_ROUTE_VARIANTS = {
+  m5: [
+    {
+      id: 'via-upper',
+      along: 0.28,
+      label: '2A · 4',
+      edges: ['m1|m2', 'm2|m6', 'm6|m8', 'm8|m5']
+    },
+    {
+      id: 'via-lower',
+      along: 0.72,
+      label: '2B · 4',
+      edges: ['m1|m2', 'm2|m4', 'm4|m8', 'm8|m5']
+    }
+  ],
+  c3m5: [
+    {
+      id: 'via-2a-3a',
+      along: 0.12,
+      label: '2A · 3A · 4',
+      edges: ['c3m1|c3m2a', 'c3m2a|c3m3a', 'c3m3a|c3m4', 'c3m4|c3m5']
+    },
+    {
+      id: 'via-2a-3',
+      along: 0.37,
+      label: '2A · 3 · 4',
+      edges: ['c3m1|c3m2a', 'c3m2a|c3m3', 'c3m3|c3m4', 'c3m4|c3m5']
+    },
+    {
+      id: 'via-2b-3b',
+      along: 0.63,
+      label: '2B · 3B · 4',
+      edges: ['c3m1|c3m2b', 'c3m2b|c3m3b', 'c3m3b|c3m4', 'c3m4|c3m5']
+    },
+    {
+      id: 'via-2b-3',
+      along: 0.88,
+      label: '2B · 3 · 4',
+      edges: ['c3m1|c3m2b', 'c3m2b|c3m3', 'c3m3|c3m4', 'c3m4|c3m5']
+    }
+  ]
+};
+
+/** @param {string} moduleId */
+export function getPathRouteVariants(moduleId) {
+  return PATH_ROUTE_VARIANTS[moduleId] ?? null;
+}
 
 export function getChapterGraph(chapter) {
   if (chapter === 2) {
